@@ -8,6 +8,7 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
+import net.minecraft.world.level.storage.loot.predicates.LootItemConditionType;
 
 /**
  * @author Harley O'Connor
@@ -26,19 +27,16 @@ public final class VoluntarySeedDropChance implements LootItemCondition {
     }
 
     @Override
-    public MapCodec<? extends LootItemCondition> codec() {
-        return CODEC;
+    public LootItemConditionType getType() {
+        return DTRegistries.VOLUNTARY_SEED_DROP_CHANCE.get();
     }
-
-    //    @Override
-//    public LootItemConditionType getType() {
-//        return DTRegistries.VOLUNTARY_SEED_DROP_CHANCE.get();
-//    }
 
     @Override
     public boolean test(LootContext context) {
-        final Float seasonalSeedDropFactor = context.getOptionalParameter(DTLootContextParams.SEASONAL_SEED_DROP_FACTOR);
-        assert seasonalSeedDropFactor != null;
+        final Float seasonalSeedDropFactor = context.getParamOrNull(DTLootContextParams.SEASONAL_SEED_DROP_FACTOR);
+        if (seasonalSeedDropFactor == null) {
+            return false;
+        }
         double minimumDropRate = DTConfigs.SERVER.minSeasonalVoluntarySeedDropRate.get();
         double adjustedSeasonalSeedDropFactor = Math.min(seasonalSeedDropFactor + minimumDropRate, 1.0F);
         return rarity * DTConfigs.SERVER.voluntarySeedDropRate.get() * adjustedSeasonalSeedDropFactor > context.getRandom().nextFloat();

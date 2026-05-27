@@ -1,6 +1,7 @@
 package com.dtteam.dynamictrees.loot.function;
 
 import com.dtteam.dynamictrees.loot.DTLootContextParams;
+import com.dtteam.dynamictrees.registry.DTRegistries;
 import com.dtteam.dynamictrees.systems.nodemapper.NetVolumeNode;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -8,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.functions.LootItemConditionalFunction;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunctionType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 
 import java.util.List;
@@ -26,14 +28,16 @@ public final class MultiplyByLogsCount extends LootItemConditionalFunction {
     }
 
     @Override
-    public MapCodec<? extends LootItemConditionalFunction> codec() {
-        return CODEC;
+    public LootItemFunctionType<? extends LootItemConditionalFunction> getType() {
+        return DTRegistries.MULTIPLY_LOGS_COUNT.get();
     }
 
     @Override
     protected ItemStack run(ItemStack stack, LootContext context) {
-        final Integer volume = context.getOptionalParameter(DTLootContextParams.VOLUME);
-        assert volume != null;
+        final Integer volume = context.getParamOrNull(DTLootContextParams.VOLUME);
+        if (volume == null) {
+            return stack;
+        }
         stack.setCount(stack.getCount() * (int) Math.floor((float) volume / NetVolumeNode.Volume.VOXELSPERLOG));
         return stack;
     }
