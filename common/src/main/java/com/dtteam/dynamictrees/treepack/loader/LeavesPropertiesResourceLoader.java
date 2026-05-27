@@ -36,6 +36,7 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
         // Primitive leaves are needed before gathering data.
         this.gatherDataAppliers
                 .register("primitive_leaves", Block.class, LeavesProperties::setPrimitiveLeaves)
+            .register("family", ResourceLocation.class, this::setFamily)
                 .register("only_if_loaded",String.class,LeavesProperties::setOnlyIfLoaded)
                 .registerArrayApplier("only_if_loaded",String.class,LeavesProperties::setOnlyIfLoaded)
                 .registerListApplier("seed_drop_chances", Float.class, LeavesProperties::setSeedDropChances)
@@ -46,16 +47,7 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
 
         // Primitive leaves are needed both client and server (so cannot be done on load).
         this.setupAppliers.register("primitive_leaves", Block.class, LeavesProperties::setPrimitiveLeaves)
-                .register("family", ResourceLocation.class, (leavesProperties, registryName) -> {
-                    final ResourceLocation processedRegName = ResourceLocationUtils.parseDTLocation(registryName);
-                    Family.REGISTRY.runOnNextLock(Family.REGISTRY.generateIfValidRunnable(
-                            processedRegName,
-                            leavesProperties::setFamily,
-                            () -> this.logWarning(leavesProperties.getRegistryName(),
-                                    "Could not set family for leaves properties with name \"" + leavesProperties
-                                            + "\" as family \"" + processedRegName + "\" was not found.")
-                    ));
-                });
+            .register("family", ResourceLocation.class, this::setFamily);
 
         this.reloadAppliers.register("requires_shears", Boolean.class, LeavesProperties::setRequiresShears)
                 .register("cell_kit", CellKit.class, LeavesProperties::setCellKit)
@@ -119,6 +111,21 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
 
     private Boolean shouldGenerateBlocks(JsonObject json) {
         return JsonHelper.getOrDefault(json, "generate_block", Boolean.class, true);
+    }
+
+    private void setFamily(LeavesProperties leavesProperties, ResourceLocation registryName) {
+        final ResourceLocation processedRegName = ResourceLocationUtils.parseDTLocation(registryName);
+        if (Family.REGISTRY.has(processedRegName)) {
+            leavesProperties.setFamily(Family.REGISTRY.get(processedRegName));
+            return;
+        }
+        Family.REGISTRY.runOnNextLock(Family.REGISTRY.generateIfValidRunnable(
+                processedRegName,
+                leavesProperties::setFamily,
+                () -> this.logWarning(leavesProperties.getRegistryName(),
+                        "Could not set family for leaves properties with name \"" + leavesProperties
+                                + "\" as family \"" + processedRegName + "\" was not found.")
+        ));
     }
 
     private void generateBlocks(LeavesProperties leavesProperties, JsonObject json) {
