@@ -32,7 +32,9 @@ public final class SeasonalSeedDropChance implements LootItemCondition {
     @Override
     public boolean test(LootContext context) {
         Float seasonalSeedDropFactor = context.getParamOrNull(DTLootContextParams.SEASONAL_SEED_DROP_FACTOR);
-        assert seasonalSeedDropFactor != null;
+        if (seasonalSeedDropFactor == null) {
+            return false;
+        }
         double minimumDropRate = DTConfigs.SERVER.minSeasonalLeavesSeedDropRate.get();
         double adjustedSeasonalSeedDropFactor = Math.min(seasonalSeedDropFactor + minimumDropRate, 1.0F);
         return DTConfigs.SERVER.leavesSeedDropRate.get() * adjustedSeasonalSeedDropFactor > context.getRandom().nextFloat();

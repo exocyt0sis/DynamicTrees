@@ -35,7 +35,9 @@ public final class MultiplyByLogsCount extends LootItemConditionalFunction {
     @Override
     protected ItemStack run(ItemStack stack, LootContext context) {
         final Integer volume = context.getParamOrNull(DTLootContextParams.VOLUME);
-        assert volume != null;
+        if (volume == null) {
+            return stack;
+        }
         stack.setCount(stack.getCount() * (int) Math.floor((float) volume / NetVolumeNode.Volume.VOXELSPERLOG));
         return stack;
     }

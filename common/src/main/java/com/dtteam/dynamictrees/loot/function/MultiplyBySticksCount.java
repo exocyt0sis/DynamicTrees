@@ -35,7 +35,9 @@ public final class MultiplyBySticksCount extends LootItemConditionalFunction {
     @Override
     protected ItemStack run(ItemStack stack, LootContext context) {
         final Integer volume = context.getParamOrNull(DTLootContextParams.VOLUME);
-        assert volume != null;
+        if (volume == null) {
+            return stack;
+        }
         stack.setCount(stack.getCount() * 8 * (volume % NetVolumeNode.Volume.VOXELSPERLOG) /
                 NetVolumeNode.Volume.VOXELSPERLOG);
         return stack;

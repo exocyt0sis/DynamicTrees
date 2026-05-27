@@ -34,7 +34,9 @@ public final class SpeciesMatches implements LootItemCondition {
     @Override
     public boolean test(LootContext context) {
         final Species species = context.getParamOrNull(DTLootContextParams.SPECIES);
-        assert species != null;
+        if (species == null) {
+            return false;
+        }
         return String.valueOf(species.getRegistryName()).matches(regex);
     }
 
