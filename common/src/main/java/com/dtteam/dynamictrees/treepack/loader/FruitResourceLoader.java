@@ -8,7 +8,7 @@ import com.dtteam.dynamictrees.deserialization.JsonHelper;
 import com.dtteam.dynamictrees.deserialization.deserializer.IdentifierDeserializer;
 import com.dtteam.dynamictrees.utility.NullUtils;
 import com.google.gson.JsonObject;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -35,14 +35,17 @@ public final class FruitResourceLoader extends JsonRegistryResourceLoader<Fruit>
 
         // Item is needed on datagen and setup
         this.gatherDataAppliers
-                .register("item", Item.class, Fruit::setItem)
+            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
+                .register("item_stack", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
                 .register("drop_count", Integer.class, Fruit::setDropCount)
                 .register("min_drop_count", Integer.class, Fruit::setMinDropCount)
-                .register("max_drop_count", Integer.class, Fruit::setMaxDropCount)
-                .register("rotate_model", Boolean.class, Fruit::setRotateModel);
-        this.setupAppliers.register("item", Item.class, Fruit::setItem);
+                .register("max_drop_count", Integer.class, Fruit::setMaxDropCount);
+        this.setupAppliers
+            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
+            .register("item_stack", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)));
 
         this.reloadAppliers
+            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
                 .register("item_stack", ItemStack.class, Fruit::setItemStack)
                 .register("can_bone_meal", Boolean.class, Fruit::setCanBoneMeal)
                 .register("growth_chance", Float.class, Fruit::setGrowthChance)
@@ -87,7 +90,7 @@ public final class FruitResourceLoader extends JsonRegistryResourceLoader<Fruit>
      * using the fruit's registry name)
      */
     @Nullable
-    private Identifier getBlockRegistryName(Fruit fruit, JsonObject json) {
+    private ResourceLocation getBlockRegistryName(Fruit fruit, JsonObject json) {
         return NullUtils.applyIfNonnull(json.get("block_registry_name"), element ->
                 IdentifierDeserializer.create(fruit.getRegistryName().getNamespace())
                         .deserialize(element)

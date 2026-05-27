@@ -2,13 +2,16 @@ package com.dtteam.dynamictrees.block.leaves;
 
 import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.cell.CellKit;
+import com.dtteam.dynamictrees.api.lazyvalue.MutableLazyValue;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.RegistryHandler;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
 import com.dtteam.dynamictrees.api.worldgen.LevelContext;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
-import com.dtteam.dynamictrees.config.DTConfigs;
+import com.dtteam.dynamictrees.client.BlockColorMultipliers;
+import com.dtteam.dynamictrees.data.DTDataProvider;
 import com.dtteam.dynamictrees.data.DTLootTableBuilder;
+import com.dtteam.dynamictrees.data.Generator;
 import com.dtteam.dynamictrees.data.tags.DTBlockTags;
 import com.dtteam.dynamictrees.loot.DTLootContextParams;
 import com.dtteam.dynamictrees.loot.DTLootParameterSets;
@@ -17,19 +20,18 @@ import com.dtteam.dynamictrees.systems.cell.CellKits;
 import com.dtteam.dynamictrees.tree.family.Family;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.treepack.Resettable;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
 import com.dtteam.dynamictrees.utility.Optionals;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.color.block.BlockColor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.particles.ColorParticleOption;
-import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.particles.ParticleType;
-import net.minecraft.core.particles.SimpleParticleType;
-import net.minecraft.data.tags.TagAppender;
-import net.minecraft.resources.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.data.tags.IntrinsicHolderTagsProvider;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.ReloadableServerRegistries;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
@@ -37,8 +39,9 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.FoliageColor;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
@@ -53,13 +56,13 @@ import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import org.apache.commons.lang3.tuple.Pair;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * This class provides a means of holding individual properties for leaves.  This is necessary since leaves can contain
@@ -69,8 +72,12 @@ import java.util.function.Function;
  */
 public class LeavesProperties extends RegistryEntry<LeavesProperties> implements Resettable<LeavesProperties> {
 
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.BlockState, LeavesProperties>>> blockStateGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.ItemModel, LeavesProperties>>> itemModelGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.Language, LeavesProperties>>> languageGenerators = new HashMap<>();
+
     public static final Codec<LeavesProperties> CODEC = RecordCodecBuilder.create(instance -> instance
-            .group(Identifier.CODEC.fieldOf(TypedRegistry.RESOURCE_LOCATION.toString()).forGetter(LeavesProperties::getRegistryName))
+            .group(ResourceLocation.CODEC.fieldOf(TypedRegistry.RESOURCE_LOCATION.toString()).forGetter(LeavesProperties::getRegistryName))
             .apply(instance, LeavesProperties::new));
 
     public static final LeavesProperties NULL = new LeavesProperties() {
@@ -138,7 +145,6 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         public boolean updateTick(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand) {
             return false;
         }
-
     }.setRegistryName(DynamicTrees.NULL).setBlockRegistryName(DynamicTrees.NULL);
 
     /**
@@ -169,38 +175,30 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     protected AgeingConfiguration ageingConfiguration = AgeingConfiguration.ALWAYS;
     protected boolean connectAnyRadius = false;
     protected boolean requiresShears = true;
+    protected boolean hasTickParticles = false;
     protected boolean waterResistant = false;
-    protected float leavesParticleChance = 0.01F;
-    protected @Nullable ParticleType<ColorParticleOption> coloredLeavesParticle = null;
-    protected @Nullable Integer forceParticleColor = null;
-    protected @Nullable SimpleParticleType simpleLeavesParticle = null;
 
     private LeavesProperties() {
         this.blockLootTableSupplier = new LootTableSupplier("null/", DynamicTrees.NULL);
         this.lootTableSupplier = new LootTableSupplier("null/", DynamicTrees.NULL);
     }
 
-    public LeavesProperties(final Identifier registryName) {
+    public LeavesProperties(final ResourceLocation registryName) {
         this(null, registryName);
     }
 
-    public LeavesProperties(@Nullable final BlockState primitiveLeaves, final Identifier registryName) {
+    public LeavesProperties(@Nullable final BlockState primitiveLeaves, final ResourceLocation registryName) {
         this(primitiveLeaves, CellKits.DECIDUOUS, registryName);
     }
 
-    public LeavesProperties(@Nullable final BlockState primitiveLeaves, final CellKit cellKit, final Identifier registryName) {
+    public LeavesProperties(@Nullable final BlockState primitiveLeaves, final CellKit cellKit, final ResourceLocation registryName) {
         this.family = Family.NULL_FAMILY;
         this.primitiveLeaves = primitiveLeaves != null ? primitiveLeaves : Blocks.AIR.defaultBlockState();
         this.cellKit = cellKit;
         this.setRegistryName(registryName);
-        this.blockRegistryName = IdentifierUtils.suffix(registryName, this.getBlockRegistryNameSuffix());
+        this.blockRegistryName = ResourceLocationUtils.suffix(registryName, this.getBlockRegistryNameSuffix());
         this.blockLootTableSupplier = new LootTableSupplier("blocks/", blockRegistryName);
         this.lootTableSupplier = new LootTableSupplier("trees/leaves/", registryName);
-    }
-
-    @Override
-    public final Class<LeavesProperties> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     ///////////////////////////////////////////
@@ -226,7 +224,7 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
 
     private final LootTableSupplier blockLootTableSupplier;
 
-    public Identifier getBlockLootTableName() {
+    public ResourceLocation getBlockLootTableName() {
         return blockLootTableSupplier.getName();
     }
 
@@ -238,16 +236,21 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         return shouldGenerateDrops();
     }
 
+    private Item getConfiguredStickItem() {
+        final Item familyStick = getFamily().getStick(1).getItem();
+        return familyStick == Items.AIR ? Items.STICK : familyStick;
+    }
+
     public LootTable.Builder createBlockDrops(HolderLookup.Provider registries) {
         if (primitiveLeaves != null && getPrimitiveLeavesBlock().isPresent()) {
-            return DTLootTableBuilder.createLeavesBlockDrops(primitiveLeaves.getBlock(), seedDropChances, getFamily().getStick(), registries);
+            return DTLootTableBuilder.createLeavesBlockDrops(primitiveLeaves.getBlock(), seedDropChances, getConfiguredStickItem(), registries);
         }
-        return DTLootTableBuilder.createLeavesDrops(seedDropChances, LootContextParamSets.BLOCK, getFamily().getStick(), registries);
+        return DTLootTableBuilder.createLeavesDrops(seedDropChances, LootContextParamSets.BLOCK, getConfiguredStickItem(), registries);
     }
 
     private final LootTableSupplier lootTableSupplier;
 
-    public Identifier getLootTableName() {
+    public ResourceLocation getLootTableName() {
         return lootTableSupplier.getName();
     }
 
@@ -260,11 +263,11 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     }
 
     public LootTable.Builder createDrops(HolderLookup.Provider registries) {
-        return DTLootTableBuilder.createLeavesDrops(seedDropChances, DTLootParameterSets.LEAVES, getFamily().getStick(), registries);
+        return DTLootTableBuilder.createLeavesDrops(seedDropChances, DTLootParameterSets.LEAVES, getConfiguredStickItem(), registries);
     }
 
     public List<ItemStack> getDrops(Level level, BlockPos pos, ItemStack tool, Species species) {
-        if (level.isClientSide()) {
+        if (level.isClientSide) {
             return Collections.emptyList();
         }
         if (level.getServer() == null) return List.of();
@@ -281,9 +284,24 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
                 .create(DTLootParameterSets.LEAVES);
     }
 
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, LeavesProperties>> leavesStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("leaves")
+            ));
+    protected final MutableLazyValue<Generator<DTDataProvider.Language, LeavesProperties>> leavesLangGenerator =
+            MutableLazyValue.supplied(languageGenerators.get(
+                    DynamicTrees.location("leaves_lang")
+            ));
+
     @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("leaves"));
+    public void generateStateData(DTDataProvider.BlockState provider) {
+        // Generate leaves block state and model.
+        this.leavesStateGenerator.get().generate(provider, this);
+    }
+
+    @Override
+    public void generateLangData(DTDataProvider.Language provider) {
+        this.leavesLangGenerator.get().generate(provider, this);
     }
 
     ///////////////////////////////////////////
@@ -324,24 +342,24 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         return new ItemStack(Item.BY_BLOCK.get(getPrimitiveLeaves().getBlock()));
     }
 
-    protected HashMap<String, Identifier> textureOverrides = new HashMap<>();
-    protected HashMap<String, Identifier> modelOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> textureOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> modelOverrides = new HashMap<>();
     protected HashMap<String, String> langOverrides = new HashMap<>();
     public static final String LEAVES = "leaves";
 
-    public void setTextureOverrides(Map<String, Identifier> textureOverrides) {
+    public void setTextureOverrides(Map<String, ResourceLocation> textureOverrides) {
         this.textureOverrides.putAll(textureOverrides);
     }
-    public void setModelOverrides(Map<String, Identifier> modelOverrides) {
+    public void setModelOverrides(Map<String, ResourceLocation> modelOverrides) {
         this.modelOverrides.putAll(modelOverrides);
     }
     public void setLangOverrides(Map<String, String> modelOverrides) {
         this.langOverrides.putAll(modelOverrides);
     }
-    public Optional<Identifier> getTexturePath(String key) {
+    public Optional<ResourceLocation> getTexturePath(String key) {
         return Optional.ofNullable(textureOverrides.getOrDefault(key, null));
     }
-    public Optional<Identifier> getModelPath(String key) {
+    public Optional<ResourceLocation> getModelPath(String key) {
         return Optional.ofNullable(modelOverrides.getOrDefault(key, null));
     }
     public Optional<String> getLangOverride(String key) {
@@ -356,14 +374,14 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
      * The registry name for the leaves block. This allows for built-in compatibility where the dynamic leaves may
      * otherwise share the same name as their regular leaves block.
      */
-    private Identifier blockRegistryName;
+    private ResourceLocation blockRegistryName;
 
     /**
      * Gets the {@link #blockRegistryName} for this {@link LeavesProperties} object.
      *
      * @return The {@link #blockRegistryName} for this {@link LeavesProperties} object.
      */
-    public Identifier getBlockRegistryName() {
+    public ResourceLocation getBlockRegistryName() {
         return this.blockRegistryName;
     }
 
@@ -371,10 +389,10 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
      * Sets the {@link #blockRegistryName} for this {@link LeavesProperties} object to the specified {@code
      * blockRegistryName}.
      *
-     * @param blockRegistryName The new {@link Identifier} object to set.
+     * @param blockRegistryName The new {@link ResourceLocation} object to set.
      * @return This {@link LeavesProperties} object for chaining.
      */
-    public LeavesProperties setBlockRegistryName(Identifier blockRegistryName) {
+    public LeavesProperties setBlockRegistryName(ResourceLocation blockRegistryName) {
         this.blockRegistryName = blockRegistryName;
         return this;
     }
@@ -395,7 +413,7 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     }
 
     protected DynamicLeavesBlock createDynamicLeaves(final BlockBehaviour.Properties properties) {
-        return new DynamicLeavesBlock(blockRegistryName,this, properties);
+        return new DynamicLeavesBlock(this, properties);
     }
 
     public void generateDynamicLeaves(final BlockBehaviour.Properties properties) {
@@ -559,13 +577,18 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         this.connectAnyRadius = connectAnyRadius;
     }
 
-    public boolean isMovementVanilla(){
-        return DTConfigs.SERVER_CONFIG.isLoaded() && DTConfigs.SERVER.vanillaLeavesCollision.get();
+    @Deprecated(forRemoval = true)
+    public MapColor getDefaultMapColor() {
+        return MapColor.PLANT;
+    }
+
+    @Deprecated(forRemoval = true)
+    public BlockBehaviour.Properties getDefaultBlockProperties(final MapColor mapColor) {
+        return getDefaultBlockProperties();
     }
 
     public BlockBehaviour.Properties getDefaultBlockProperties() {
         return BlockBehaviour.Properties.of()
-                .speedFactor(isMovementVanilla() ? 1.0f : 0.25f)
                 .mapColor(MapColor.PLANT)
                 .ignitedByLava()
                 .pushReaction(PushReaction.DESTROY)
@@ -603,6 +626,10 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         this.requiresShears = requiresShears;
     }
 
+    public void setHasTickParticles(boolean hasTickParticles) {
+        this.hasTickParticles = hasTickParticles;
+    }
+
     public void setWaterResistant(boolean waterResistant) {
         this.waterResistant = waterResistant;
     }
@@ -623,79 +650,65 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     // LEAVES COLORS
     ///////////////////////////////////////////
 
+    protected Integer colorNumber;
     protected String colorString;
-    protected int foliageTintLayerCount = 1;
+
+    public void setColorNumber(Integer colorNumber) {
+        this.colorNumber = colorNumber;
+    }
 
     public void setColorString(String colorString) {
         this.colorString = colorString;
     }
 
-    public boolean hasCustomColor(){
-        return colorString != null;
+    //
+    private BlockColor colorMultiplier;
+
+    //
+    public int treeFallColorMultiplier(BlockState state, BlockAndTintGetter level, BlockPos pos) {
+        return this.foliageColorMultiplier(state, level, pos);
     }
 
-    /**
-     * @return null to default back to Biome color. Return any number to use a fixed color otherwise.
-     * To fall back to cloning the primitive block, #colorString must be null and this method will not be called.
-     */
-    public @Nullable Integer getCustomColor(){
-        if (colorString != null){
-            if (colorString.startsWith("@")){
-                String code = colorString.substring(1).toLowerCase(Locale.ENGLISH);
-                return switch (code){
-                    case "birch" -> FoliageColor.FOLIAGE_BIRCH;
-                    case "evergreen" -> FoliageColor.FOLIAGE_EVERGREEN;
-                    case "default" -> FoliageColor.FOLIAGE_DEFAULT;
-                    case "mangrove" -> FoliageColor.FOLIAGE_MANGROVE;
-                    case "biome" -> null;
-                    default -> -1;
-                };
+    //
+    public int foliageColorMultiplier(BlockState state, BlockAndTintGetter level, BlockPos pos) {
+        if (colorMultiplier == null) {
+            return 0x00FF00FF; //purple if broken
+        }
+        return colorMultiplier.getColor(state, level, pos, -1);
+    }
+
+//    
+    private void processColor() {
+        int color = -1;
+        if (this.colorNumber != null) {
+            color = this.colorNumber;
+        } else if (this.colorString != null) {
+            String code = this.colorString;
+            if (code.startsWith("@")) {
+                code = code.substring(1);
+                if ("biome".equals(code)) { // Built in code since we need access to super.
+                    this.colorMultiplier = (state, level, pos, t) -> ((LevelAccessor) level).getBiome(pos).value().getFoliageColor();
+                    return;
+                }
+
+                BlockColor blockColor = BlockColorMultipliers.find(code);
+                if (blockColor != null) {
+                    colorMultiplier = blockColor;
+                    return;
+                } else {
+                    DynamicTrees.LOG.error("ColorMultiplier resource '{}' could not be found.", code);
+                }
             } else {
-                return Color.decode(colorString).getRGB();
+                color = Color.decode(code).getRGB();
             }
         }
-        return -1;
+        int c = color;
+        this.colorMultiplier = (s, w, p, t) -> c == -1 ? Minecraft.getInstance().getBlockColors().getColor(getPrimitiveLeaves(), w, p, 0) : c;
     }
 
-    public int getFoliageTintLayerCount(){
-        return foliageTintLayerCount;
-    }
-
-    public void setFoliageTintLayerCount(int primitiveBlockTintLayerCount) {
-        this.foliageTintLayerCount = primitiveBlockTintLayerCount;
-    }
-
-    public void setLeavesParticleChance(float leavesParticleChance) {
-        this.leavesParticleChance = leavesParticleChance;
-    }
-
-    public float getLeavesParticleChance() {
-        return leavesParticleChance;
-    }
-
-    public void setLeavesParticle(ParticleType<@NotNull ColorParticleOption> leavesParticle) {
-        this.coloredLeavesParticle = leavesParticle;
-    }
-    public void setLeavesParticle(SimpleParticleType leavesParticle){
-        this.simpleLeavesParticle = leavesParticle;
-    }
-
-    @Nullable
-    public ParticleOptions getLeavesParticle(int color) {
-        if (coloredLeavesParticle != null){
-            color = forceParticleColor == null ? color : forceParticleColor;
-            return ColorParticleOption.create(coloredLeavesParticle, color);
-        }
-        if (simpleLeavesParticle != null) return simpleLeavesParticle;
-        return null;
-    }
-
-    public void setForceParticleColor(@Nullable Integer forceParticleColor) {
-        this.forceParticleColor = forceParticleColor;
-    }
-
-    public @Nullable Integer getForceParticleColor() {
-        return forceParticleColor;
+    //
+    public static void postInitClient() {
+        REGISTRY.getAll().forEach(LeavesProperties::processColor);
     }
 
     ///////////////////////////////////////////
@@ -710,11 +723,11 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
                 Pair.of("connectAnyRadius", this.connectAnyRadius));
     }
 
-    public void addGeneratedBlockTags (Function<TagKey<Block>, TagAppender<Block, Block>> tagAppender){
+    public void addGeneratedBlockTags (Function<TagKey<Block>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tagAppender){
         getDynamicLeavesBlock().ifPresent(leaves ->
                 defaultLeavesTags().forEach(tag -> {
                     if (isOnlyIfLoaded()) {
-                        tagAppender.apply(tag).addOptional(leaves);
+                        tagAppender.apply(tag).addOptional(BuiltInRegistries.BLOCK.getKey(leaves));
                     } else {
                         tagAppender.apply(tag).add(leaves);
                     }

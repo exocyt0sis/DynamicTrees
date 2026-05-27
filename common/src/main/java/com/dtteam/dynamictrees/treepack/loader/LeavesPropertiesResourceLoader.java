@@ -5,26 +5,19 @@ import com.dtteam.dynamictrees.api.resource.loading.preparation.JsonRegistryReso
 import com.dtteam.dynamictrees.block.leaves.LeavesProperties;
 import com.dtteam.dynamictrees.block.leaves.PalmLeavesProperties;
 import com.dtteam.dynamictrees.block.leaves.ScruffyLeavesProperties;
-import com.dtteam.dynamictrees.deserialization.JsonDeserializers;
 import com.dtteam.dynamictrees.deserialization.JsonHelper;
 import com.dtteam.dynamictrees.deserialization.applier.Applier;
 import com.dtteam.dynamictrees.deserialization.applier.PropertyApplierResult;
 import com.dtteam.dynamictrees.deserialization.deserializer.IdentifierDeserializer;
 import com.dtteam.dynamictrees.deserialization.result.JsonResult;
 import com.dtteam.dynamictrees.tree.family.Family;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.mojang.serialization.JsonOps;
-import net.minecraft.core.particles.ColorParticleOption;
-import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.particles.ParticleType;
-import net.minecraft.core.particles.SimpleParticleType;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import org.apache.logging.log4j.LogManager;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * @author Harley O'Connor
@@ -38,33 +31,23 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
     @Override
     public void registerAppliers() {
         this.loadAppliers.register("color", String.class, LeavesProperties::setColorString)
-                .register("foliage_tint_layer_count", Integer.class, LeavesProperties::setFoliageTintLayerCount);
+                .register("color", Integer.class, LeavesProperties::setColorNumber);
 
         // Primitive leaves are needed before gathering data.
         this.gatherDataAppliers
                 .register("primitive_leaves", Block.class, LeavesProperties::setPrimitiveLeaves)
+            .register("family", ResourceLocation.class, this::setFamily)
                 .register("only_if_loaded",String.class,LeavesProperties::setOnlyIfLoaded)
                 .registerArrayApplier("only_if_loaded",String.class,LeavesProperties::setOnlyIfLoaded)
                 .registerListApplier("seed_drop_chances", Float.class, LeavesProperties::setSeedDropChances)
-                .registerMapApplier("texture_overrides", Identifier.class, LeavesProperties::setTextureOverrides)
-                .registerMapApplier("model_overrides", Identifier.class, LeavesProperties::setModelOverrides)
-                .register("frond_model_loader", PalmLeavesProperties.class, Identifier.class, PalmLeavesProperties::setFrondLoader)
+                .registerMapApplier("texture_overrides", ResourceLocation.class, LeavesProperties::setTextureOverrides)
+                .registerMapApplier("model_overrides", ResourceLocation.class, LeavesProperties::setModelOverrides)
+                .register("frond_model_loader", PalmLeavesProperties.class, ResourceLocation.class, PalmLeavesProperties::setFrondLoader)
                 .registerMapApplier("lang_overrides", String.class, LeavesProperties::setLangOverrides);
 
         // Primitive leaves are needed both client and server (so cannot be done on load).
         this.setupAppliers.register("primitive_leaves", Block.class, LeavesProperties::setPrimitiveLeaves)
-                .register("family", Identifier.class, (leavesProperties, registryName) -> {
-                    final Identifier processedRegName = IdentifierUtils.parseDTLocation(registryName);
-                    Family.REGISTRY.runOnNextLock(Family.REGISTRY.generateIfValidRunnable(
-                            processedRegName,
-                            leavesProperties::setFamily,
-                            () -> this.logWarning(leavesProperties.getRegistryName(),
-                                    "Could not set family for leaves properties with name \"" + leavesProperties
-                                            + "\" as family \"" + processedRegName + "\" was not found.")
-                    ));
-                })
-                .register("particle", JsonElement.class, this::processParticle)
-                .register("particle_color", Integer.class, LeavesProperties::setForceParticleColor);
+            .register("family", ResourceLocation.class, this::setFamily);
 
         this.reloadAppliers.register("requires_shears", Boolean.class, LeavesProperties::setRequiresShears)
                 .register("cell_kit", CellKit.class, LeavesProperties::setCellKit)
@@ -76,6 +59,7 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
                 .register("does_age", String.class, (Applier<LeavesProperties, String>) this::readDoesAge)
                 .register("ageing_configuration", LeavesProperties.AgeingConfiguration.class, LeavesProperties::setAgeingConfiguration)
                 .register("can_grow_on_ground", Boolean.class, LeavesProperties::setCanGrowOnGround)
+                .register("has_tick_particles", Boolean.class, LeavesProperties::setHasTickParticles)
                 .register("water_resistant", Boolean.class, LeavesProperties::setWaterResistant)
                 .register("scruffy_leaf_chance", ScruffyLeavesProperties.class, Float.class, ScruffyLeavesProperties::setLeafChance)
                 .register("scruffy_max_hydro", ScruffyLeavesProperties.class, Integer.class, ScruffyLeavesProperties::setMaxHydro);
@@ -103,16 +87,45 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
 
     @Override
     protected void applyLoadAppliers(JsonRegistryResourceLoader<LeavesProperties>.LoadData loadData, JsonObject json) {
-        super.applyLoadAppliers(loadData, json);
+        final LeavesProperties leavesProperties = loadData.getResource();
+        this.readCustomBlockRegistryName(leavesProperties, json);
 
         if (this.shouldGenerateBlocks(json)) {
-            final LeavesProperties leavesProperties = loadData.getResource();
             this.generateBlocks(leavesProperties, json);
         }
+
+        super.applyLoadAppliers(loadData, json);
+    }
+
+    private void readCustomBlockRegistryName(LeavesProperties leavesProperties, JsonObject json) {
+        JsonResult.forInput(json)
+                .mapIfContains("block_registry_name", JsonElement.class, input ->
+                IdentifierDeserializer.create(leavesProperties.getRegistryName().getNamespace())
+                                .deserialize(input).orElseThrow(), leavesProperties.getBlockRegistryName()
+                ).ifSuccessOrElse(
+                        leavesProperties::setBlockRegistryName,
+                        error -> this.logError(leavesProperties.getRegistryName(), error),
+                        warning -> this.logWarning(leavesProperties.getRegistryName(), warning)
+                );
     }
 
     private Boolean shouldGenerateBlocks(JsonObject json) {
         return JsonHelper.getOrDefault(json, "generate_block", Boolean.class, true);
+    }
+
+    private void setFamily(LeavesProperties leavesProperties, ResourceLocation registryName) {
+        final ResourceLocation processedRegName = ResourceLocationUtils.parseDTLocation(registryName);
+        if (Family.REGISTRY.has(processedRegName)) {
+            leavesProperties.setFamily(Family.REGISTRY.get(processedRegName));
+            return;
+        }
+        Family.REGISTRY.runOnNextLock(Family.REGISTRY.generateIfValidRunnable(
+                processedRegName,
+                leavesProperties::setFamily,
+                () -> this.logWarning(leavesProperties.getRegistryName(),
+                        "Could not set family for leaves properties with name \"" + leavesProperties
+                                + "\" as family \"" + processedRegName + "\" was not found.")
+        ));
     }
 
     private void generateBlocks(LeavesProperties leavesProperties, JsonObject json) {
@@ -125,49 +138,8 @@ public final class LeavesPropertiesResourceLoader extends JsonRegistryResourceLo
 
         leavesProperties.setRequiresShears(true);
 
-        readCustomBlockRegistryName(leavesProperties, json);
-        readParticleChance(leavesProperties, json);
 
         leavesProperties.generateDynamicLeaves(blockProperties);
-    }
-
-    private void readCustomBlockRegistryName(LeavesProperties leavesProperties, JsonObject json) {
-        JsonResult.forInput(json)
-                .mapIfContains("block_registry_name", JsonElement.class, input ->
-                        IdentifierDeserializer.create(leavesProperties.getRegistryName().getNamespace())
-                                .deserialize(input).orElseThrow(), leavesProperties.getBlockRegistryName()
-                ).ifSuccessOrElse(
-                        leavesProperties::setBlockRegistryName,
-                        error -> this.logError(leavesProperties.getRegistryName(), error),
-                        warning -> this.logWarning(leavesProperties.getRegistryName(), warning)
-                );
-    }
-
-    private void readParticleChance(LeavesProperties leavesProperties, JsonObject json) {
-        JsonResult.forInput(json)
-                .mapIfContains("particle_chance", JsonElement.class, input ->
-                        JsonDeserializers.FLOAT.deserialize(input).orElseThrow(), leavesProperties.getLeavesParticleChance()
-                ).ifSuccessOrElse(
-                        leavesProperties::setLeavesParticleChance,
-                        error -> this.logError(leavesProperties.getRegistryName(), error),
-                        warning -> this.logWarning(leavesProperties.getRegistryName(), warning)
-                );
-    }
-
-    @SuppressWarnings("unchecked")
-    private void processParticle(LeavesProperties leavesProperties, JsonElement json){
-        ParticleType<?> particle = JsonDeserializers.PARTICLE_TYPE.deserialize(json).orElse(null);
-        if (particle instanceof SimpleParticleType simpleParticle){
-            leavesProperties.setLeavesParticle(simpleParticle);
-        } else if (particle != null){
-            JsonObject dummy = new JsonObject();
-            dummy.addProperty("color", 0xFFFFFF);
-            ParticleOptions options = particle.codec().codec()
-                    .parse(JsonOps.INSTANCE, dummy).result().orElse(null);
-            if (options instanceof ColorParticleOption){
-                leavesProperties.setLeavesParticle((ParticleType<@NotNull ColorParticleOption>) particle);
-            }
-        }
     }
 
 }
