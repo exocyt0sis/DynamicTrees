@@ -1,4 +1,4 @@
-# Dynamic Trees - 1.21.1 Backport (NeoForge)
+# Dynamic Trees 1.21.1 Backport (NeoForge)
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-3C8527.svg)](https://www.minecraft.net/)
 [![NeoForge](https://img.shields.io/badge/NeoForge-21.1.233-43853d.svg)](https://neoforged.net/)
