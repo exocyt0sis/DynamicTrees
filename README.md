@@ -7,8 +7,6 @@
 
 Minecraft NeoForge mod providing dynamic trees that progressively grow from seed to maturity, with Pale Garden and creaking-heart compatibility backported for 1.21.1.
 
-![Logo](./header.png)
-
 ## What This Backport Adds
 
 - Stable Pale Garden support in the Dynamic Trees flow.
@@ -36,18 +34,12 @@ This backport brings key Pale Garden behavior from the 26.1.2 line to 1.21.1 usi
 - Updated family/resource loading flow so resin properties are applied consistently during setup and reload.
 - Finalized model and texture mappings for pale oak creaking heart and resin branches to prevent out-of-model or floating render artifacts.
 
-## Links
-
-- [CurseForge](https://www.curseforge.com/minecraft/mc-mods/dynamictrees)
-- [Modrinth](https://modrinth.com/mod/dynamictrees)
-- [Discord](https://discord.gg/A4FCBS3)
-
 ## Build From Source
 
 1. Clone the repository.
 2. Open a terminal in the repository root.
 3. Use Java 21.
-4. Run `gradlew build` on Windows, or `./gradlew build` on Linux/macOS.
+4. Run `gradlew build` on Windows, or `./gradlew build` on Linux/MacOS.
 5. The NeoForge artifact is generated in `neoforge/build/libs/`.
 
 ## Release Artifacts
