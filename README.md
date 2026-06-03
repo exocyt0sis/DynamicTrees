@@ -1,9 +1,9 @@
 # Dynamic Trees - 1.21.1 Backport (NeoForge)
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-5fbf3f?style=for-the-badge)](https://www.minecraft.net/)
-[![Loader](https://img.shields.io/badge/NeoForge-21.1.x-2d2d2d?style=for-the-badge&logo=neovim&logoColor=white)](https://neoforged.net/)
-[![Vanilla%20Backport](https://img.shields.io/badge/Vanilla%20Backport-1.1.7.6-recommended-ffb347?style=for-the-badge)](https://www.curseforge.com/minecraft/mc-mods/vanillabackport)
-[![Status](https://img.shields.io/badge/Status-Feature%20Complete%20Beta-2ea44f?style=for-the-badge)](#)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-3C8527.svg)](https://www.minecraft.net/)
+[![NeoForge](https://img.shields.io/badge/NeoForge-21.1.233-43853d.svg)](https://neoforged.net/)
+[![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
+[![Release](https://img.shields.io/badge/status-release_1.8.0-brightgreen.svg)](https://github.com/exocyt0sis/DynamicTrees/releases/tag/1.8.0-BETA02-backport-1.21.1)
 
 Minecraft NeoForge mod providing dynamic trees that progressively grow from seed to maturity, with Pale Garden and creaking-heart compatibility backported for 1.21.1.
 
@@ -22,7 +22,7 @@ Minecraft NeoForge mod providing dynamic trees that progressively grow from seed
 
 Other Vanilla Backport versions may load and run, but full compatibility with Pale Garden behavior is only validated against 1.1.7.6.
 
-## Technical Summary (26.1.2 -> 1.21.1 Backport)
+## Technical Summary (26.1.2 ⇾ 1.21.1 Backport)
 
 This backport brings key Pale Garden behavior from the 26.1.2 line to 1.21.1 using a compatibility-first approach:
 
