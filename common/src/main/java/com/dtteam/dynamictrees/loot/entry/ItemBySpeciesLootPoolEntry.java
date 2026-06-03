@@ -50,10 +50,7 @@ public final class ItemBySpeciesLootPoolEntry extends LootPoolSingletonContainer
     @Override
     protected void createItemStack(Consumer<ItemStack> stackConsumer, LootContext context) {
         final Species species = context.getParamOrNull(DTLootContextParams.SPECIES);
-        if (species == null) {
-            stackConsumer.accept(ItemStack.EMPTY);
-            return;
-        }
+        assert species != null;
         Holder<Item> itemHolder = items.get(species.getRegistryName());
         Item item = itemHolder == null ? Items.AIR : itemHolder.value();
         stackConsumer.accept(new ItemStack(item));

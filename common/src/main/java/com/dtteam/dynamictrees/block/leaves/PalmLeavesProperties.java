@@ -1,13 +1,16 @@
 package com.dtteam.dynamictrees.block.leaves;
 
 import com.dtteam.dynamictrees.DynamicTrees;
+import com.dtteam.dynamictrees.api.lazyvalue.MutableLazyValue;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
+import com.dtteam.dynamictrees.data.DTDataProvider;
+import com.dtteam.dynamictrees.data.Generator;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.utility.CoordUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockGetter;
@@ -22,32 +25,36 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-import java.util.List;
 import java.util.function.BiConsumer;
 
 public class PalmLeavesProperties extends LeavesProperties {
 
     public static final TypedRegistry.EntryType<LeavesProperties> TYPE = TypedRegistry.newType(PalmLeavesProperties::new);
 
-    public PalmLeavesProperties(Identifier registryName) {
+    public PalmLeavesProperties(ResourceLocation registryName) {
         super(registryName);
-        this.leavesParticleChance = 0;
     }
 
     @Override
     protected DynamicLeavesBlock createDynamicLeaves(BlockBehaviour.Properties properties) {
-        return new DynamicPalmLeavesBlock(getBlockRegistryName(),this, properties);
+        return new DynamicPalmLeavesBlock(this, properties);
     }
 
-    Identifier frondLoader = DynamicTrees.location("large_palm_fronds");
-    public void setFrondLoader(Identifier frondLoader) {
+    ResourceLocation frondLoader = DynamicTrees.location("large_palm_fronds");
+    public void setFrondLoader(ResourceLocation frondLoader) {
         this.frondLoader = frondLoader;
     }
-    public Identifier getFrondLoader () { return frondLoader; }
+    public ResourceLocation getFrondLoader () { return frondLoader; }
+
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, LeavesProperties>> frondsStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("palm_fronds")
+            ));
 
     @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("palm_fronds"));
+    public void generateStateData(DTDataProvider.BlockState provider) {
+        // Generate leaves block state and model.
+        this.frondsStateGenerator.get().generate(provider, this);
     }
 
     public String getFrondsModelName(){
@@ -63,22 +70,22 @@ public class PalmLeavesProperties extends LeavesProperties {
     public static final String FROND = "frond";
     public static final String CORE_TOP = "core_top";
     public static final String CORE_BOTTOM = "core_bottom";
-    public void addFrondTextures(BiConsumer<String, Identifier> textureConsumer, Identifier leavesTextureLocation) {
-        Identifier leavesLoc = getTexturePath(FROND).orElse(leavesTextureLocation);
+    public void addFrondTextures(BiConsumer<String, ResourceLocation> textureConsumer, ResourceLocation leavesTextureLocation) {
+        ResourceLocation leavesLoc = getTexturePath(FROND).orElse(leavesTextureLocation);
         textureConsumer.accept("frond", leavesLoc);
     }
 
-    public void addCoreTextures(BiConsumer<String, Identifier> textureConsumer,
-                                   Identifier coreTextureLocation) {
-        Identifier coreLoc = getTexturePath(CORE_BOTTOM).orElse(coreTextureLocation);
+    public void addCoreTextures(BiConsumer<String, ResourceLocation> textureConsumer,
+                                   ResourceLocation coreTextureLocation) {
+        ResourceLocation coreLoc = getTexturePath(CORE_BOTTOM).orElse(coreTextureLocation);
         textureConsumer.accept("core_bottom", coreLoc);
     }
 
-    public Identifier getCoreTopSmartModelLocation() {
+    public ResourceLocation getCoreTopSmartModelLocation() {
         if (modelOverrides.containsKey(CORE_TOP)) return modelOverrides.get(CORE_TOP);
         return DynamicTrees.location("block/smartmodel/palm/core_top");
     }
-    public Identifier getCoreBottomSmartModelLocation() {
+    public ResourceLocation getCoreBottomSmartModelLocation() {
         if (modelOverrides.containsKey(CORE_BOTTOM)) return modelOverrides.get(CORE_BOTTOM);
         return DynamicTrees.location("block/smartmodel/palm/core_bottom");
     }
@@ -110,8 +117,8 @@ public class PalmLeavesProperties extends LeavesProperties {
             super.randomTick(state, level, pos, rand);
         }
 
-        public DynamicPalmLeavesBlock(Identifier id, LeavesProperties leavesProperties, Properties properties) {
-            super(id, leavesProperties, properties);
+        public DynamicPalmLeavesBlock(LeavesProperties leavesProperties, Properties properties) {
+            super(leavesProperties, properties);
             registerDefaultState(defaultBlockState().setValue(DIRECTION, 0));
         }
 
@@ -156,8 +163,8 @@ public class PalmLeavesProperties extends LeavesProperties {
         }
 
         @Override
-        protected VoxelShape getOcclusionShape(BlockState state) {
-            AABB base = super.getOcclusionShape(state).bounds();
+        public VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
+            AABB base = super.getOcclusionShape(state, level, pos).bounds();
             base.inflate(1, 0, 1);
             base.inflate(-1, -0, -1);
             return Shapes.create(base);

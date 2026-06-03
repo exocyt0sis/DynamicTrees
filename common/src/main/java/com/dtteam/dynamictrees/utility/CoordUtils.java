@@ -52,7 +52,7 @@ public final class CoordUtils {
             this.name = name;
             BlockPos pos = BlockPos.ZERO;
             for (Direction d : dirs) {
-                pos = pos.offset(d.getUnitVec3i());
+                pos = pos.offset(d.getNormal());
             }
             this.offset = pos;
         }
@@ -74,7 +74,7 @@ public final class CoordUtils {
         }
     }
 
-    public static Direction getRandom2DDir(RandomSource rand) {
+    public static Direction getRandomDir(RandomSource rand) {
         return Direction.values()[2 + rand.nextInt(4)];//Return NSWE
     }
 
@@ -162,7 +162,7 @@ public final class CoordUtils {
             return d0 <= d1 ? blockraytraceresult : blockraytraceresult1;
         }, (context1) -> {
             Vec3 vec3d = context1.getStartVector().subtract(context1.getEndVector());
-            return BlockHitResult.miss(context1.getEndVector(), Direction.getApproximateNearest(vec3d), BlockPos.containing(context1.getEndVector()));
+            return BlockHitResult.miss(context1.getEndVector(), Direction.getNearest(vec3d.x, vec3d.y, vec3d.z), BlockPos.containing(context1.getEndVector()));
         });
     }
 

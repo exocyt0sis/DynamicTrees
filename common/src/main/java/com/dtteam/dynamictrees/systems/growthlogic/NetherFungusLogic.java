@@ -8,14 +8,14 @@ import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.utility.CoordUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 
 public class NetherFungusLogic extends GrowthLogicKit {
 
     public static final ConfigurationProperty<Integer> MIN_CAP_HEIGHT = ConfigurationProperty.integer("min_cap_height");
 
-    public NetherFungusLogic(final Identifier registryName) {
+    public NetherFungusLogic(final ResourceLocation registryName) {
         super(registryName);
     }
 
@@ -52,7 +52,7 @@ public class NetherFungusLogic extends GrowthLogicKit {
             } else if (!context.species().isMegaSpecies()) {
                 for (Direction direction : CoordUtils.HORIZONTALS) {
                     if (TreeHelper.isBranch(
-                            context.level().getBlockState(context.pos().offset(direction.getOpposite().getUnitVec3i())))) {
+                            context.level().getBlockState(context.pos().offset(direction.getOpposite().getNormal())))) {
                         probMap[direction.get3DDataValue()] = 0;
                     }
                 }

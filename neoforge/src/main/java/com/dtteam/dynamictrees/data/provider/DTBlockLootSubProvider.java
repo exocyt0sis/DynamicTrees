@@ -10,28 +10,29 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.loot.BlockLootSubProvider;
-import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackType;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.neoforged.fml.ModLoader;
+import net.neoforged.neoforge.common.data.ExistingFileHelper;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class DTBlockLootSubProvider extends BlockLootSubProvider {
     protected final HolderLookup.Provider registries;
     private final String modId;
-    private final Map<ResourceKey<LootTable>, LootTable.Builder> map = new HashMap<>();
+    private final ExistingFileHelper fileHelper;
 
-    protected DTBlockLootSubProvider(HolderLookup.Provider registries, String modId) {
+    protected DTBlockLootSubProvider(HolderLookup.Provider registries, String modId, ExistingFileHelper fileHelper) {
         super(Set.of(), FeatureFlagSet.of(), registries);
         this.registries = registries;
 
         this.modId = modId;
+        this.fileHelper = fileHelper;
     }
 
     @Override
@@ -52,7 +53,7 @@ public class DTBlockLootSubProvider extends BlockLootSubProvider {
         Fruit.REGISTRY.dataGenerationStream(modId).forEach(this::addFruitBlockTable);
         Pod.REGISTRY.dataGenerationStream(modId).forEach(this::addPodBlockTable);
 
-        ModLoader.postEvent(new DataGenerationStreamEvent(this, modId, map, registries));
+        ModLoader.postEvent(new DataGenerationStreamEvent(this, modId, fileHelper, map, registries));
     }
 
     @Override
@@ -64,49 +65,55 @@ public class DTBlockLootSubProvider extends BlockLootSubProvider {
 
     private void addVoluntaryTable(Species species) {
         if (species.shouldGenerateVoluntaryDrops()) {
-            final Identifier leavesTablePath = species.getVoluntaryDropsPath();
+            final ResourceLocation leavesTablePath = species.getVoluntaryDropsPath();
+            if (!fileHelper.exists(leavesTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, leavesTablePath), species.createVoluntaryDrops(registries));
-
+            }
         }
     }
 
     private void addBranchTable(BranchBlock branchBlock) {
         if (branchBlock.shouldGenerateBranchDrops()) {
-            final Identifier branchTablePath = branchBlock.getLootTableName();
+            final ResourceLocation branchTablePath = branchBlock.getLootTableName();
+            if (!fileHelper.exists(branchTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, branchTablePath), branchBlock.createBranchDrops(registries));
-
+            }
         }
     }
 
     private void addLeavesBlockTable(LeavesProperties leavesProperties) {
         if (leavesProperties.shouldGenerateBlockDrops()) {
-            final Identifier leavesBlockTablePath = leavesProperties.getBlockLootTableName();
+            final ResourceLocation leavesBlockTablePath = leavesProperties.getBlockLootTableName();
+            if (!fileHelper.exists(leavesBlockTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, leavesBlockTablePath), leavesProperties.createBlockDrops(registries));
-
+            }
         }
     }
 
     private void addLeavesTable(LeavesProperties leavesProperties) {
         if (leavesProperties.shouldGenerateDrops()) {
-            final Identifier leavesTablePath = leavesProperties.getLootTableName();
+            final ResourceLocation leavesTablePath = leavesProperties.getLootTableName();
+            if (!fileHelper.exists(leavesTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, leavesTablePath), leavesProperties.createDrops(registries));
-
+            }
         }
     }
 
     private void addFruitBlockTable(Fruit fruit) {
         if (fruit.shouldGenerateBlockDrops()) {
-            final Identifier fruitBlockTablePath = fruit.getBlockDropsPath();
+            final ResourceLocation fruitBlockTablePath = fruit.getBlockDropsPath();
+            if (!fileHelper.exists(fruitBlockTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, fruitBlockTablePath), fruit.createBlockDrops(registries));
-
+            }
         }
     }
 
     private void addPodBlockTable(Pod pod) {
         if (pod.shouldGenerateBlockDrops()) {
-            final Identifier fruitBlockTablePath = pod.getBlockDropsPath();
+            final ResourceLocation fruitBlockTablePath = pod.getBlockDropsPath();
+            if (!fileHelper.exists(fruitBlockTablePath, PackType.SERVER_DATA)) {
                 this.map.put(ResourceKey.create(Registries.LOOT_TABLE, fruitBlockTablePath), pod.createBlockDrops(registries));
-
+            }
         }
     }
 

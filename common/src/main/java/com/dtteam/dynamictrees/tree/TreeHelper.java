@@ -9,7 +9,6 @@ import com.dtteam.dynamictrees.block.NullTreePart;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
 import com.dtteam.dynamictrees.block.branch.TrunkShellBlock;
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
-import com.dtteam.dynamictrees.block.sapling.DynamicSaplingBlock;
 import com.dtteam.dynamictrees.block.soil.SoilBlock;
 import com.dtteam.dynamictrees.block.soil.SoilBlockDecayer;
 import com.dtteam.dynamictrees.client.ParticleHelper;
@@ -19,7 +18,7 @@ import com.dtteam.dynamictrees.worldgen.JoCode;
 import com.dtteam.dynamictrees.worldgen.RootsJoCode;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
@@ -46,14 +45,10 @@ public class TreeHelper {
      */
     public static void growPulse(Level level, BlockPos rootPos) {
         BlockState rootyState = level.getBlockState(rootPos);
-        if (rootyState.getBlock() instanceof DynamicSaplingBlock sapling){
-            sapling.performBonemeal(level, rootPos, rootyState);
-        } else {
-            SoilBlock dirt = TreeHelper.getRooty(rootyState);
-            if (dirt != null) {
-                dirt.updateTree(rootyState, level, rootPos, level.getRandom(), false);
-                ageVolume(level, rootPos, 8, 32, 1, false);//blindly age a cuboid volume
-            }
+        SoilBlock dirt = TreeHelper.getRooty(rootyState);
+        if (dirt != null) {
+            dirt.updateTree(rootyState, level, rootPos, level.random, false);
+            ageVolume(level, rootPos, 8, 32, 1, false);//blindly age a cuboid volume
         }
     }
 
@@ -104,6 +99,7 @@ public class TreeHelper {
                 }
             }
         }
+
     }
 
     /**
@@ -128,6 +124,7 @@ public class TreeHelper {
                 }
             }
         }
+
     }
 
     public static Optional<JoCode> getRootsJoCode(Level level, BlockPos pos) {
@@ -254,16 +251,18 @@ public class TreeHelper {
     /**
      * Convenience function that spawns particles all over the tree branches
      */
-    public static void treeParticles(Level level, BlockPos rootPos, ParticleOptions type, int num) {
-        if (level.isClientSide()) {
+    public static void treeParticles(Level level, BlockPos rootPos, SimpleParticleType type, int num) {
+        if (level.isClientSide) {
             startAnalysisFromRoot(level, rootPos, new MapSignal(new TwinkleNode(type, num)));
         }
     }
 
-    public static void rootParticles(Level level, BlockPos rootPos, Direction offset, ParticleOptions type, int num) {
-        if (level.isClientSide() && level.getBlockState(rootPos).getBlock() instanceof SoilBlock) {
-            final BlockPos particlePos = rootPos.offset(offset.getUnitVec3i());
-            ParticleHelper.spawnParticles(level, type, particlePos.getX(), particlePos.getY(), particlePos.getZ(), num, level.getRandom());
+    public static void rootParticles(Level level, BlockPos rootPos, Direction offset, SimpleParticleType type, int num) {
+        if (level.isClientSide) {
+            if (level.isClientSide() && level.getBlockState(rootPos).getBlock() instanceof SoilBlock) {
+                final BlockPos particlePos = rootPos.offset(offset.getNormal());
+                ParticleHelper.spawnParticles(level, type, particlePos.getX(), particlePos.getY(), particlePos.getZ(), num, level.getRandom());
+            }
         }
     }
 
@@ -303,13 +302,12 @@ public class TreeHelper {
         if (cutBlock == null) return;
 
         // Fire event for break sound and particles
-        if (!level.isClientSide())
-            level.levelEvent(null, 2001, cutPos, Block.getId(level.getBlockState(cutPos)));
+        level.levelEvent(null, 2001, cutPos, Block.getId(level.getBlockState(cutPos)));
 
         BranchDestructionData destructionData = cutBlock.destroyBranchFromNode(level, cutPos, Direction.DOWN, false, player);
 
         // Allow drop consumer callback to handle drops
-        destructionData.leavesDrops.forEach(stackData -> dropConsumer.accept(stackData.pos(), stackData.stack()));
+        destructionData.leavesDrops.forEach(stackData -> dropConsumer.accept(stackData.pos, stackData.stack));
         destructionData.species.getBranchesDrops(level, destructionData.woodVolume).forEach(stack -> dropConsumer.accept(startPos, stack));
     }
 
@@ -337,6 +335,7 @@ public class TreeHelper {
 
 
     //Branches
+
     public static boolean isBranch(Block block) {
         return block instanceof BranchBlock;//Oh shuddap you java purists.. this is minecraft!
     }
@@ -362,10 +361,6 @@ public class TreeHelper {
 
     public static int getRadius(BlockGetter level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
-        return getRadius(state);
-    }
-
-    public static int getRadius(BlockState state) {
         return getTreePart(state).getRadius(state);
     }
 

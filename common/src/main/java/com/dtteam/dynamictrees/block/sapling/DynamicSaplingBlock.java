@@ -6,9 +6,6 @@ import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.utility.CoordUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemStack;
@@ -21,7 +18,6 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
@@ -29,8 +25,6 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.NotNull;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,16 +37,8 @@ public class DynamicSaplingBlock extends Block implements BonemealableBlock {
 
     protected Species species;
 
-    public DynamicSaplingBlock(Identifier id, Species species) {
-        super(Properties.of()
-                .mapColor(MapColor.PLANT)
-                .noCollision()
-                .pushReaction(PushReaction.DESTROY)
-                .instabreak()
-                .sound(SoundType.GRASS)
-                .randomTicks()
-                .noOcclusion()
-                .setId(ResourceKey.create(Registries.BLOCK, id)));
+    public DynamicSaplingBlock(Species species) {
+        super(Properties.of().mapColor(MapColor.PLANT).noCollission().pushReaction(PushReaction.DESTROY).instabreak().sound(SoundType.GRASS).randomTicks().noOcclusion());
         this.species = species;
     }
 
@@ -118,20 +104,14 @@ public class DynamicSaplingBlock extends Block implements BonemealableBlock {
 
     @Override
     public void performBonemeal(@NotNull ServerLevel level, @NotNull RandomSource rand, @NotNull BlockPos pos, @NotNull BlockState state) {
-        performBonemeal(level, pos, state);
-    }
-
-    public boolean performBonemeal(@NonNull Level level, @NonNull BlockPos pos, @NonNull BlockState state) {
         if (this.canSurvive(state, level, pos)) {
             final Species species = this.getSpecies().selfOrLocationOverride(level, pos);;
             if (species.canSaplingGrow(level, pos)) {
                 species.transitionToTree(level, pos);
-                return true;
             }
         } else {
             this.dropBlock(level, state, pos);
         }
-        return false;
     }
 
     @Override
@@ -143,9 +123,8 @@ public class DynamicSaplingBlock extends Block implements BonemealableBlock {
     // DROPS
     ///////////////////////////////////////////
 
-
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @Nullable Orientation orientation, boolean movedByPiston) {
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block blockIn, BlockPos fromPos, boolean isMoving) {
         if (!this.canSurvive(state, level, pos)) {
             this.dropBlock(level, state, pos);
         }
@@ -159,7 +138,7 @@ public class DynamicSaplingBlock extends Block implements BonemealableBlock {
     }
 
     @Override
-    protected ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
         return this.getSpecies().getSeedStack(1);
     }
 
@@ -168,10 +147,7 @@ public class DynamicSaplingBlock extends Block implements BonemealableBlock {
         if (!DTConfigs.SERVER.dynamicSaplingDrops.get())
             return Collections.emptyList();
         // If a loot table has been added load those drops instead.
-        LootTable loottable = LootTable.EMPTY;
-        if (getLootTable().isPresent())
-            loottable = builder.getLevel().getServer().reloadableRegistries().getLootTable(getLootTable().get());
-
+        LootTable loottable = builder.getLevel().getServer().reloadableRegistries().getLootTable(getLootTable());
         if (loottable == LootTable.EMPTY)
             return Collections.singletonList(this.getSpecies().getSeedStack(1));
 

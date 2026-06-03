@@ -1,5 +1,6 @@
 package com.dtteam.dynamictrees.loot.function;
 
+import com.dtteam.dynamictrees.registry.DTRegistries;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -7,6 +8,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.functions.LootItemConditionalFunction;
 import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
+import net.minecraft.world.level.storage.loot.functions.LootItemFunctionType;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 
 import java.util.List;
@@ -29,8 +31,8 @@ public final class MultiplyCount extends LootItemConditionalFunction {
     }
 
     @Override
-    public MapCodec<? extends LootItemConditionalFunction> codec() {
-        return CODEC;
+    public LootItemFunctionType<? extends LootItemConditionalFunction> getType() {
+        return DTRegistries.MULTIPLY_COUNT.get();
     }
 
     @Override

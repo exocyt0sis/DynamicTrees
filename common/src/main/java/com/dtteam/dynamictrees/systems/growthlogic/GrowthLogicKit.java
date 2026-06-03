@@ -11,10 +11,10 @@ import com.dtteam.dynamictrees.systems.growthlogic.context.PositionalSpeciesCont
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.utility.MathUtils;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -42,7 +42,7 @@ public abstract class GrowthLogicKit extends ConfigurableRegistryEntry<GrowthLog
     public static final ConfigurableRegistry<GrowthLogicKit, GrowthLogicKitConfiguration> REGISTRY =
             new ConfigurableRegistry<>(GrowthLogicKit.class, DEFAULT, GrowthLogicKitConfiguration.TEMPLATES);
 
-    public GrowthLogicKit(final Identifier registryName) {
+    public GrowthLogicKit(final ResourceLocation registryName) {
         super(registryName);
     }
 
@@ -53,11 +53,6 @@ public abstract class GrowthLogicKit extends ConfigurableRegistryEntry<GrowthLog
 
     @Override
     protected void registerProperties() {
-    }
-
-    @Override
-    public final Class<GrowthLogicKit> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     /**
@@ -164,10 +159,10 @@ public abstract class GrowthLogicKit extends ConfigurableRegistryEntry<GrowthLog
     //////////////////////////////
 
     public static GrowthLogicKit findGrowthLogicKit(final String name) {
-        return findGrowthLogicKit(IdentifierUtils.parseDTLocation(name));
+        return findGrowthLogicKit(ResourceLocationUtils.parseDTLocation(name));
     }
 
-    public static GrowthLogicKit findGrowthLogicKit(final Identifier name) {
+    public static GrowthLogicKit findGrowthLogicKit(final ResourceLocation name) {
         return GrowthLogicKit.REGISTRY.get(name);
     }
 

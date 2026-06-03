@@ -17,16 +17,18 @@ import com.dtteam.dynamictrees.tree.family.Family;
 import com.dtteam.dynamictrees.tree.species.Species;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.*;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
-import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
@@ -52,19 +54,20 @@ public class BasicBranchBlock extends BranchBlock implements SimpleWaterloggedBl
     private int flammability = 5; // Mimic vanilla logs
     private int fireSpreadSpeed = 5; // Mimic vanilla logs
 
-    protected final int maxRadiusForWaterLogging = 7; //the maximum radius for a branch to be allowed to be water logged
+    private final int maxRadiusForWaterLogging = 7; //the maximum radius for a branch to be allowed to be water logged
 
     /**
      * @param name name of branch, without a {@code _branch} suffix
      */
-    public BasicBranchBlock(Identifier name, Properties properties) {
+    public BasicBranchBlock(ResourceLocation name, Properties properties) {
         this(name, properties, RADIUS, MAX_RADIUS);
     }
 
     /**
      * @param name name of branch, without a {@code _branch} suffix
      */
-    public BasicBranchBlock(Identifier name, BlockBehaviour.Properties properties, IntegerProperty radiusProperty, int maxRadius) {
+    public BasicBranchBlock(ResourceLocation name, BlockBehaviour.Properties properties, IntegerProperty radiusProperty,
+                            int maxRadius) {
         super(name, properties);
 
         // Create branch state cache.
@@ -79,7 +82,7 @@ public class BasicBranchBlock extends BranchBlock implements SimpleWaterloggedBl
      * @return The {@code array} cache of {@link BlockState}s.
      */
     public BlockState[] createBranchStates(final IntegerProperty radiusProperty, final int maxRadius) {
-        this.registerDefaultState(defaultBlockState().setValue(radiusProperty, 4).setValue(WATERLOGGED, false));
+        this.registerDefaultState(this.stateDefinition.any().setValue(radiusProperty, 1).setValue(WATERLOGGED, false));
 
         final BlockState[] branchStates = new BlockState[maxRadius + 1];
 
@@ -165,19 +168,19 @@ public class BasicBranchBlock extends BranchBlock implements SimpleWaterloggedBl
     }
 
     @Override
-    protected BlockState updateShape(BlockState state, LevelReader level, ScheduledTickAccess ticks, BlockPos pos, Direction directionToNeighbour, BlockPos neighbourPos, BlockState neighbourState, RandomSource random) {
-        if (state.getValue(WATERLOGGED)) {
-            ticks.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
+    public BlockState updateShape(BlockState stateIn, Direction facing, BlockState facingState, LevelAccessor level, BlockPos currentPos, BlockPos facingPos) {
+        if (stateIn.getValue(WATERLOGGED)) {
+            level.scheduleTick(currentPos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
         }
-        return super.updateShape(state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
+        return super.updateShape(stateIn, facing, facingState, level, currentPos, facingPos);
     }
 
     @Override
-    public boolean canPlaceLiquid(@org.jspecify.annotations.Nullable LivingEntity user, BlockGetter level, BlockPos pos, BlockState state, Fluid type) {
+    public boolean canPlaceLiquid(@Nullable Player player, BlockGetter level, BlockPos pos, BlockState state, Fluid fluid) {
         if (getRadius(state) > maxRadiusForWaterLogging) {
             return false;
         }
-        return SimpleWaterloggedBlock.super.canPlaceLiquid(user, level, pos, state, type);
+        return SimpleWaterloggedBlock.super.canPlaceLiquid(player, level, pos, state, fluid);
     }
 
     ///////////////////////////////////////////
@@ -205,21 +208,14 @@ public class BasicBranchBlock extends BranchBlock implements SimpleWaterloggedBl
         return flammability;
     }
 
-    @Override
-    public BranchBlock setFlammability(int flammability) {
+    public BasicBranchBlock setFlammability(int flammability) {
         this.flammability = flammability;
         return this;
     }
 
-    @Override
-    public BranchBlock setFireSpreadSpeed(int fireSpreadSpeed) {
+    public BasicBranchBlock setFireSpreadSpeed(int fireSpreadSpeed) {
         this.fireSpreadSpeed = fireSpreadSpeed;
         return this;
-    }
-
-    @Override
-    protected SoundType getSoundType(BlockState state) {
-        return getPrimitiveLog().map(block -> block.defaultBlockState().getSoundType()).orElseGet(() -> super.getSoundType(state));
     }
 
     ///////////////////////////////////////////
@@ -249,15 +245,11 @@ public class BasicBranchBlock extends BranchBlock implements SimpleWaterloggedBl
     @Override
     public int setRadius(LevelAccessor level, BlockPos pos, int radius, @Nullable Direction originDir, int flags) {
         destroyMode = DynamicTrees.DestroyMode.SET_RADIUS;
-        level.setBlock(pos, getStateForRadius(radius, level.getBlockState(pos)), flags);
+        boolean replacingWater = level.getBlockState(pos).getFluidState() == Fluids.WATER.getSource(false);
+        boolean setWaterlogged = replacingWater && radius <= maxRadiusForWaterLogging;
+        level.setBlock(pos, getStateForRadius(radius).setValue(WATERLOGGED, setWaterlogged), flags);
         destroyMode = DynamicTrees.DestroyMode.SLOPPY;
         return radius;
-    }
-
-    public BlockState getStateForRadius(int radius, BlockState previousState) {
-        boolean replacingWater = previousState.getFluidState() == Fluids.WATER.getSource(false);
-        boolean setWaterlogged = replacingWater && radius <= maxRadiusForWaterLogging;
-        return getStateForRadius(radius).setValue(WATERLOGGED, setWaterlogged);
     }
 
     @Override

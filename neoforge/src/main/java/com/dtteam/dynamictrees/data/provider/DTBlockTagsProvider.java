@@ -12,6 +12,8 @@ import net.minecraft.data.PackOutput;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.neoforge.common.data.BlockTagsProvider;
+import net.neoforged.neoforge.common.data.ExistingFileHelper;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -19,16 +21,16 @@ import java.util.concurrent.CompletableFuture;
  * @author Harley O'Connor
  */
 public class DTBlockTagsProvider extends BlockTagsProvider {
-    public DTBlockTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, String modid) {
-        super(output, lookupProvider, modid);
+    public DTBlockTagsProvider(PackOutput output, String modid, CompletableFuture<HolderLookup.Provider> lookupProvider, @Nullable ExistingFileHelper fileHelper) {
+        super(output, lookupProvider, modid, fileHelper);
     }
 
     @Override
     protected void addTags(HolderLookup.Provider provider) {
-        this.addDTTags();
         if (this.modId.equals(DynamicTrees.MOD_ID)) {
             this.addDTOnlyTags();
         }
+        this.addDTTags();
     }
 
     private void addDTOnlyTags() {

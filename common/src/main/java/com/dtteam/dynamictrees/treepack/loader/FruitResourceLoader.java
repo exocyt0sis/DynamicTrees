@@ -5,7 +5,7 @@ import com.dtteam.dynamictrees.block.Growable;
 import com.dtteam.dynamictrees.block.fruit.Fruit;
 import com.dtteam.dynamictrees.deserialization.JsonDeserializers;
 import com.dtteam.dynamictrees.deserialization.JsonHelper;
-import com.dtteam.dynamictrees.deserialization.deserializer.IdentifierDeserializer;
+import com.dtteam.dynamictrees.deserialization.deserializer.ResourceLocationDeserializer;
 import com.dtteam.dynamictrees.utility.NullUtils;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
@@ -35,17 +35,13 @@ public final class FruitResourceLoader extends JsonRegistryResourceLoader<Fruit>
 
         // Item is needed on datagen and setup
         this.gatherDataAppliers
-            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
                 .register("item_stack", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
                 .register("drop_count", Integer.class, Fruit::setDropCount)
                 .register("min_drop_count", Integer.class, Fruit::setMinDropCount)
                 .register("max_drop_count", Integer.class, Fruit::setMaxDropCount);
-        this.setupAppliers
-            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
-            .register("item_stack", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)));
+        this.setupAppliers.register("item_stack", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)));
 
         this.reloadAppliers
-            .register("item", Item.class, (fruit, item) -> fruit.setItemStack(new ItemStack(item)))
                 .register("item_stack", ItemStack.class, Fruit::setItemStack)
                 .register("can_bone_meal", Boolean.class, Fruit::setCanBoneMeal)
                 .register("growth_chance", Float.class, Fruit::setGrowthChance)
@@ -92,7 +88,7 @@ public final class FruitResourceLoader extends JsonRegistryResourceLoader<Fruit>
     @Nullable
     private ResourceLocation getBlockRegistryName(Fruit fruit, JsonObject json) {
         return NullUtils.applyIfNonnull(json.get("block_registry_name"), element ->
-                IdentifierDeserializer.create(fruit.getRegistryName().getNamespace())
+                ResourceLocationDeserializer.create(fruit.getRegistryName().getNamespace())
                         .deserialize(element)
                         .orElse(null)
         );

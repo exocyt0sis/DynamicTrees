@@ -1,6 +1,5 @@
 {
   "type": "scruffy",
-  "family": "oak",
   "primitive_leaves": "minecraft:flowering_azalea_leaves",
   "cell_kit": "dynamictrees:azalea",
   "sound": "azalea_leaves",

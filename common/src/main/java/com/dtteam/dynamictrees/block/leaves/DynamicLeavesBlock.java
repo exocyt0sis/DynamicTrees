@@ -9,31 +9,24 @@ import com.dtteam.dynamictrees.api.worldgen.LevelContext;
 import com.dtteam.dynamictrees.block.Ageable;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
 import com.dtteam.dynamictrees.client.ParticleHelper;
-import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.data.tags.DTEntityTypeTags;
 import com.dtteam.dynamictrees.item.Seed;
 import com.dtteam.dynamictrees.loot.DTLootContextParams;
+import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.platform.Services;
 import com.dtteam.dynamictrees.systems.GrowSignal;
 import com.dtteam.dynamictrees.tree.ChunkTreeHelper;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.family.Family;
 import com.dtteam.dynamictrees.tree.species.Species;
-import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
-import net.minecraft.util.ParticleUtils;
 import net.minecraft.util.RandomSource;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -45,7 +38,6 @@ import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.material.PushReaction;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
@@ -56,26 +48,20 @@ import net.minecraft.world.phys.shapes.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.function.Predicate;
 
-public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements TreePart, Ageable {
+public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable {
 
-    protected LeavesProperties leavesProperties = LeavesProperties.NULL;
+    public LeavesProperties properties = LeavesProperties.NULL;
 
-    public DynamicLeavesBlock(Identifier id, final LeavesProperties leavesProperties, final Properties properties) {
-        this(id, properties,leavesProperties.getLeavesParticleChance());
-        this.leavesProperties = leavesProperties;
+    public DynamicLeavesBlock(final LeavesProperties leavesProperties, final Properties properties) {
+        this(properties);
+        this.properties = leavesProperties;
         leavesProperties.setDynamicLeavesState(defaultBlockState());
     }
 
-    public DynamicLeavesBlock(Identifier id, Properties leavesProperties, float leafParticleChance) {
-        super(leafParticleChance, leavesProperties.pushReaction(PushReaction.DESTROY).setId(ResourceKey.create(Registries.BLOCK, id)));
+    public DynamicLeavesBlock(Properties properties) {
+        super(properties.pushReaction(PushReaction.DESTROY));
         this.registerDefaultState(this.stateDefinition.any().setValue(DISTANCE, LeavesProperties.maxHydro).setValue(PERSISTENT, false).setValue(WATERLOGGED, false));
-    }
-
-    @Override
-    public MapCodec<? extends TintedParticleLeavesBlock> codec() {
-        return CODEC;
     }
 
     ///////////////////////////////////////////
@@ -88,7 +74,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
     }
 
     public LeavesProperties getLeavesProperties() {
-        return leavesProperties;
+        return properties;
     }
 
     @Override
@@ -119,7 +105,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
     }
 
     @Override
-    protected ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
         return getLeavesProperties().getPrimitiveLeavesItemStack();
     }
 
@@ -138,26 +124,27 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
     @Override
     public void randomTick(BlockState state, ServerLevel level, BlockPos pos, RandomSource rand) {
         double growthMultiplier = DTConfigs.SERVER.treeGrowthMultiplier.get();
-        if (rand.nextFloat() > growthMultiplier) return;
+        if (rand.nextFloat() > growthMultiplier) {
+            return;
+        }
 
-        if (removeIfInvalid(state, level, pos, rand)) return;
+        if (removeIfInvalid(state, level, pos, rand)) {
+            return;
+        }
 
         //Every once in a blue moon, age the leaves
-        if (rand.nextFloat() < 0.01)
+        if (rand.nextFloat() < 0.01){
             age(level, pos, state, rand, false);
+        }
     }
 
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @org.jspecify.annotations.Nullable Orientation orientation, boolean movedByPiston) {
-        if (orientation == null) return;
-        for (Direction dir : orientation.getDirections()){
-            BlockState neighborState = level.getBlockState(pos.offset(dir.getUnitVec3i()));
-            boolean sideIsLeaves = neighborState.hasProperty(DISTANCE);
-            int sideHydro = sideIsLeaves ? neighborState.getValue(DISTANCE) : 0;
-            if (!sideIsLeaves || sideHydro < state.getValue(DISTANCE)){
-                level.scheduleTick(pos, this, 1);
-                break;
-            }
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
+        BlockState neighborState = level.getBlockState(neighborPos);
+        boolean sideIsLeaves = neighborState.hasProperty(DISTANCE);
+        int sideHydro = sideIsLeaves ? neighborState.getValue(DISTANCE) : 0;
+        if (!sideIsLeaves || sideHydro < state.getValue(DISTANCE)){
+            level.scheduleTick(pos, this, 1);
         }
     }
 
@@ -234,8 +221,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
         final LeavesProperties leavesProperties = getLeavesProperties();
         final int oldHydro = state.getValue(DISTANCE);
 
-        if (!ChunkTreeHelper.canCheckSurroundings(accessor, pos, 2)
-                || state.hasProperty(PERSISTENT) && state.getValue(PERSISTENT)) return oldHydro;
+        if (!ChunkTreeHelper.canCheckSurroundings(accessor, pos, 2)) return oldHydro;
 
         // Check hydration level. Dry leaves (0) are dead leaves.
         final int newHydro = getHydrationLevelFromNeighbors(accessor, pos, leavesProperties);
@@ -305,7 +291,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
             return false; //leaves can't grow on leaves duh.
         }
 
-        if (!blockState.getFluidState().isEmpty() && !this.leavesProperties.waterResistant) {
+        if (!blockState.getFluidState().isEmpty() && !properties.waterResistant) {
             return false; //leaves drown inside water
         }
 
@@ -374,11 +360,9 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
     }
 
     public boolean removeIfInvalid(BlockState state, LevelAccessor level, BlockPos pos, RandomSource rand){
-        if (state.hasProperty(PERSISTENT) && state.getValue(PERSISTENT)) return false;
-
         if (getLeavesProperties().updateTick(level, pos, state, rand)) {
             //waterlogged leaves drown
-            if (state.getValue(WATERLOGGED) && !leavesProperties.waterResistant) {
+            if (state.getValue(WATERLOGGED) && !properties.waterResistant) {
                 level.setBlock(pos, getFluidState(state).createLegacyBlock(), 3);
                 return true;
             }
@@ -440,7 +424,9 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
     @Override
     public GrowSignal growSignal(Level level, BlockPos pos, GrowSignal signal) {
         if (signal.step()) // This is always placed at the beginning of every growSignal function.
+        {
             this.branchOut(level, pos, signal); // When a growth signal hits a leaf block it attempts to become a tree branch.}
+        }
         return signal;
     }
 
@@ -553,14 +539,13 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
      * This support shape allows for placement on the sides (vines) but not on top
      */
     protected static final VoxelShape SUPPORT_SHAPE = Shapes.join(Shapes.block(), box(2.0D, 14.0D, 2.0D, 14.0D, 16.0D, 14.0D), BooleanOp.ONLY_FIRST);
-
     @Override
     public VoxelShape getBlockSupportShape(BlockState pState, BlockGetter pReader, BlockPos pPos) {
         return SUPPORT_SHAPE;
     }
 
     protected boolean isMovementVanilla(){
-        return getLeavesProperties().isMovementVanilla();
+        return DTConfigs.SERVER_CONFIG.isLoaded() && DTConfigs.SERVER.vanillaLeavesCollision.get();
     }
 
     protected boolean isLeavesPassable() {
@@ -582,19 +567,19 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
             return itemEntity.getItem().getItem() instanceof Seed;
 
         //Bees fly through leaves, otherwise they get stuck :(
-        return entity != null && entity.is(DTEntityTypeTags.CAN_PASS_THROUGH_LEAVES);
+        return entity != null && entity.getType().is(DTEntityTypeTags.CAN_PASS_THROUGH_LEAVES);
     }
 
     /**
-     * Only here so that subclasses can override {@link #fallOn(Level, BlockState, BlockPos, Entity, double)}
-     * and return it to the default behavior in {@link Block#fallOn(Level, BlockState, BlockPos, Entity, double)}.
+     * Only here so that subclasses can override {@link #fallOn(Level, BlockState, BlockPos, Entity, float)}
+     * and return it to the default behavior in {@link Block#fallOn(Level, BlockState, BlockPos, Entity, float)}.
      */
     protected void superFallOn(Level level, BlockState blockState, BlockPos pos, Entity entity, float fallDistance) {
         super.fallOn(level, blockState, pos, entity, fallDistance);
     }
 
     @Override
-    public void fallOn(Level level, BlockState state, BlockPos pos, Entity entity, double fallDistance) {
+    public void fallOn(Level level, BlockState state, BlockPos pos, Entity entity, float fallDistance) {
         if (!DTConfigs.SERVER.enableCanopyCrash.get() || !(entity instanceof LivingEntity)) {
             return;
         }
@@ -612,10 +597,10 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
         boolean hasLeaves = true;
 
         final SoundType stepSound = this.getSoundType(level.getBlockState(pos));
-        final float volume = Mth.clamp((float)(stepSound.getVolume() / 16.0f * fallDistance), 0, 3.0f);
+        final float volume = Mth.clamp(stepSound.getVolume() / 16.0f * fallDistance, 0, 3.0f);
         level.playLocalSound(entity.getX(), entity.getY(), entity.getZ(), stepSound.getBreakSound(), SoundSource.BLOCKS, volume, stepSound.getPitch(), false);
 
-        for (int iy = 0; (entity.fallDistance > 3.0f) && crushing && ((pos.getY() - iy) >= level.getMinY()); iy++) {
+        for (int iy = 0; (entity.fallDistance > 3.0f) && crushing && ((pos.getY() - iy) >= level.getMinBuildHeight()); iy++) {
             if (hasLeaves) { // This layer has leaves that can help break our fall
                 entity.fallDistance *= 0.66f; // For each layer we are crushing break the momentum
                 hasLeaves = false;
@@ -627,8 +612,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
                     BlockState crashState = level.getBlockState(iPos);
                     if (TreeHelper.isLeaves(crashState)) {
                         hasLeaves = true; // This layer has leaves
-                        if (level.isClientSide())
-                            ParticleHelper.crushLeavesBlock(level, iPos, crashState, entity);
+                        ParticleHelper.crushLeavesBlock(level, iPos, crashState, entity);
                         level.removeBlock(iPos, false);
                     } else if (!level.isEmptyBlock(iPos)) {
                         crushing = false; // We hit something solid thus no longer crushing leaves layers
@@ -638,66 +622,43 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
         }
     }
 
-    protected void entityInside(BlockState state, Level level, BlockPos pos, Entity entity, InsideBlockEffectApplier effectApplier, boolean isPrecise) {
-        if (isMovementVanilla() || isEntityPassable(entity) || isPlayerInCreativeFlight(entity))
-            super.entityInside(state, level, pos, entity, effectApplier, isPrecise);
 
-        if ((isLeavesPassable() || entity.fallDistance < 2.0f) && isSliding(pos, entity, y -> (y < -0.08))) {
-            entity.resetFallDistance();
-            setDeltaYMovement(entity, -0.08);
-        } else if (!isLeavesPassable() && isSliding(pos, entity, y -> (y > 0.08 && y < 0.25))
-                && isJumping(entity)){
-            setDeltaYMovement(entity, getOldDeltaY(entity.getDeltaMovement().y) + 0.02);
-        }
-
-        entity.setSprinting(false);
-        super.entityInside(state, level, pos, entity, effectApplier, isPrecise);
-    }
-
-    private static boolean isJumping(Entity entity) {
-        if (entity instanceof LivingEntity living){
-            return living.isJumping();
-        }
-        return false;
-    }
-
-    private boolean isPlayerInCreativeFlight(Entity entity) {
-        return entity instanceof Player player && player.isCreative() && player.getAbilities().flying;
-    }
-
-    private static void setDeltaYMovement(Entity entity, double newDeltaY) {
-        Vec3 deltaMovement = entity.getDeltaMovement();
-        if (getOldDeltaY(entity.getDeltaMovement().y) < -0.1) {
-            double horizontalFactor = 0.8;
-            entity.setDeltaMovement(new Vec3(deltaMovement.x * horizontalFactor, getNewDeltaY(newDeltaY), deltaMovement.z * horizontalFactor));
+    @Override
+    public void entityInside(BlockState state, Level level, BlockPos pos, Entity entity) {
+        if (isMovementVanilla() || isEntityPassable(entity) || //Allow creative flying players through
+                (entity instanceof Player player && player.isCreative() && player.getAbilities().flying)) {
+            super.entityInside(state, level, pos, entity);
         } else {
-            entity.setDeltaMovement(new Vec3(deltaMovement.x, getNewDeltaY(newDeltaY), deltaMovement.z));
+            if (entity.getDeltaMovement().y < 0.0D && (isLeavesPassable() || entity.fallDistance < 2.0f)) {
+                entity.fallDistance = 0.0f;
+                entity.setDeltaMovement(entity.getDeltaMovement().x, entity.getDeltaMovement().y * 0.5D, entity.getDeltaMovement().z); // Slowly sink into the block
+            } else if (!isLeavesPassable() && entity.getDeltaMovement().y > 0 && entity.getDeltaMovement().y < 0.25D) {
+                entity.setDeltaMovement(entity.getDeltaMovement().x, entity.getDeltaMovement().y + 0.025, entity.getDeltaMovement().z); // Allow a little climbing
+            }
+
+            entity.setSprinting(false); // One cannot sprint upon tree tops
+            entity.setDeltaMovement(entity.getDeltaMovement().x * 0.25D, entity.getDeltaMovement().y, entity.getDeltaMovement().z * 0.25D); // Make travel slow and laborious
         }
-    }
-
-    //Taken from honey block
-    private boolean isSliding(BlockPos pos, Entity entity, Predicate<Double> isYMovementValid) {
-        final double epsilon = 0.0001;
-        if (entity.onGround() || entity.getY() > pos.getY() + (8/16f)
-                || !isYMovementValid.test(getOldDeltaY(entity.getDeltaMovement().y)))
-            return false;
-        double dx = Math.abs(pos.getX() + 0.5 - entity.getX());
-        double dz = Math.abs(pos.getZ() + 0.5 - entity.getZ());
-        double overlapDistance = (6/16f) + (entity.getBbWidth() / 2.0D) - epsilon;
-        return dx >= overlapDistance || dz >= overlapDistance;
-    }
-
-    private static double getOldDeltaY(double deltaY) {
-        return deltaY / 0.98 + 0.08;
-    }
-
-    private static double getNewDeltaY(double deltaY) {
-        return (deltaY - 0.08) * 0.98;
     }
 
     //////////////////////////////
     // DROPS
     //////////////////////////////
+
+//    @Override
+//    public boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) {
+//        return true; // We'll handle this in #getDrops as some leave drops may not require a tool.
+//    }
+//
+//    @Override
+//    public boolean isShearable(@NotNull ItemStack item, Level level, BlockPos pos) {
+//        return this.getProperties().doRequireShears();
+//    }
+
+//    @Override
+//    public List<ItemStack> onSheared(@Nullable Player player, ItemStack item, Level level, BlockPos pos, int fortune) {
+//        return this.getDrops(player, item, level, pos, fortune);
+//    }
 
     /**
      * Gets the drops for this {@link DynamicLeavesBlock}.
@@ -715,9 +676,7 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
         ServerLevel level = builder.getLevel();
 
         if (originPos == null) {
-            if (getLootTable().isPresent()){
-                lootTable = level.getServer().reloadableRegistries().getLootTable(getLootTable().get());
-            } else return new LinkedList<>();
+            lootTable = level.getServer().reloadableRegistries().getLootTable(getLootTable());
         } else {
             pos = BlockPos.containing(originPos.x, originPos.y, originPos.z);
             LeavesProperties leavesProperties = getLeavesProperties();
@@ -738,10 +697,6 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
         }
     }
 
-    //////////////////////////////
-    // UTILITY
-    //////////////////////////////
-
     /**
      * Gets the exact {@link Species} for these leaves (if able to find branches nearby). Warning! Resource intensive
      * algorithm. Use only for interactions like breaking blocks.
@@ -753,27 +708,31 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
      * found nearby.
      */
     Species getExactSpecies(@Nullable final Level level, final BlockPos pos, final LeavesProperties leavesProperties) {
-        if (level == null) return Species.NULL_SPECIES;
+        if (level == null) {
+            return Species.NULL_SPECIES;
+        }
 
         final List<BlockPos> branchList = new ArrayList<>();
 
-        // Find all the branches that are nearby
+        // Find all of the branches that are nearby
         for (BlockPos dPos : leavesProperties.getCellKit().getLeafCluster().getAllNonZero()) {
             dPos = pos.offset(BlockPos.ZERO.subtract(dPos));//Becomes immutable at this point
             final BlockState state = level.getBlockState(dPos);
 
-            if (!TreeHelper.isBranch(state)) continue;
+            if (!TreeHelper.isBranch(state)) {
+                continue;
+            }
 
             final BranchBlock branch = TreeHelper.getBranch(state);
-            if (branch == null) return Species.NULL_SPECIES;
 
-            if (branch.getFamily() == leavesProperties.getFamily()
-                    && branch.getRadius(state) == branch.getFamily().getPrimaryThickness()) {
+            if (branch.getFamily() == leavesProperties.getFamily() && branch.getRadius(state) == branch.getFamily().getPrimaryThickness()) {
                 branchList.add(dPos);
             }
         }
 
-        if (branchList.isEmpty()) return Species.NULL_SPECIES;
+        if (branchList.isEmpty()) {
+            return Species.NULL_SPECIES;
+        }
 
         // Find the closest one
         BlockPos closest = branchList.getFirst();
@@ -836,19 +795,10 @@ public class DynamicLeavesBlock extends TintedParticleLeavesBlock implements Tre
 
     @Override
     public void animateTick(BlockState state, Level level, BlockPos pos, RandomSource random) {
-        if (leafParticleChance <= 0) return;
-        if (getLeavesProperties().getLeavesParticle(0) == null) {
-            leavesProperties.getPrimitiveLeavesBlock().ifPresent((b)->b.animateTick(state,level,pos,random));
+        if (properties.hasTickParticles && properties.getPrimitiveLeavesBlock().isPresent()) {
+            properties.getPrimitiveLeavesBlock().ifPresent((b)->b.animateTick(state,level,pos,random));
         } else {
             super.animateTick(state, level, pos, random);
-        }
-    }
-
-    @Override
-    protected void spawnFallingLeavesParticle(Level level, BlockPos pos, RandomSource random) {
-        ParticleOptions particle = getLeavesProperties().getLeavesParticle(level.getClientLeafTintColor(pos));
-        if (particle != null){
-            ParticleUtils.spawnParticleBelow(level, pos, random, particle);
         }
     }
 

@@ -12,11 +12,11 @@ import com.dtteam.dynamictrees.worldgen.IDTBiomeHolderSet;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.minecraft.IdentifierException;
+import net.minecraft.ResourceLocationException;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
@@ -34,7 +34,7 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
         MinecraftServer currentServer = Services.MISC.getCurrentServer();
         if (currentServer == null)
             throw new IllegalStateException("Queried biome registry too early; server does not exist yet!");
-        return currentServer.registryAccess().lookupOrThrow(Registries.BIOME);
+        return currentServer.registryAccess().registryOrThrow(Registries.BIOME);
     };
 
     private static final Applier<IDTBiomeHolderSet, String> TAG_APPLIER = (biomeList, tagRegex) -> {
@@ -46,14 +46,14 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
             tagRegex = tagRegex.substring(1);
 
         try {
-            Identifier tagLocation = Identifier.parse(tagRegex);
+            ResourceLocation tagLocation = ResourceLocation.parse(tagRegex);
             TagKey<Biome> tagKey = TagKey.create(Registries.BIOME, tagLocation);
 
             // TODO UPDATE: This is used as a regex in 1.19.2. Double check!!!
             biomeList.addDelayedHolderSet(
                     (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()),
-                    () -> DELAYED_BIOME_REGISTRY.get().getOrThrow(tagKey));
-        } catch (IdentifierException e) {
+                    () -> DELAYED_BIOME_REGISTRY.get().getOrCreateTag(tagKey));
+        } catch (ResourceLocationException e) {
             return PropertyApplierResult.failure(e.getMessage());
         }
 
@@ -71,7 +71,7 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
         String finalNameRegex = nameRegex;
         biomeList.addNameRegexMatch(
                 (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()),
-                DELAYED_BIOME_REGISTRY::get, finalNameRegex);
+                ()->DELAYED_BIOME_REGISTRY.get().asLookup(), finalNameRegex);
     };
 
     private static boolean usingNotOperator(String categoryString) {
@@ -94,7 +94,7 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
             String finalNameRegex = nameRegex;
             biomeList.addNameRegexMatch(
                     (notOperator ? orExcludes : orIncludes),
-                    DELAYED_BIOME_REGISTRY::get, finalNameRegex);
+                    ()->DELAYED_BIOME_REGISTRY.get().asLookup(), finalNameRegex);
         });
 
         if (!orIncludes.isEmpty())
@@ -120,7 +120,7 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
 
             biomeList.addTagsRegexMatch(
                     (notOperator ? orExcludes : orIncludes),
-                    DELAYED_BIOME_REGISTRY::get, tagRegex);
+                    ()->DELAYED_BIOME_REGISTRY.get().asLookup(), tagRegex);
         });
 
         if (!orIncludes.isEmpty())
@@ -182,7 +182,7 @@ public final class BiomeListDeserializer implements JsonDeserializer<IDTBiomeHol
         return JsonResult.forInput(input)
                 .mapIfType(String.class, biomeName -> {
                     IDTBiomeHolderSet biomes = Services.MISC.newDTBiomeHolderSet();
-                    biomes.addNameRegexMatch(biomes.getIncludeComponents(), DELAYED_BIOME_REGISTRY::get, biomeName.toLowerCase(Locale.ENGLISH));
+                    biomes.addNameRegexMatch(biomes.getIncludeComponents(), ()->DELAYED_BIOME_REGISTRY.get().asLookup(), biomeName.toLowerCase(Locale.ENGLISH));
                     return biomes;
                 })
                 .elseMapIfType(JsonObject.class, selectorObject -> {

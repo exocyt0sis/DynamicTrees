@@ -36,7 +36,7 @@ public final class DTCommand {
 
         // Create 'dynamictrees' alias.
         dispatcher.register(Commands.literal(CommandConstants.COMMAND_ALIAS)
-                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .requires(commandSource -> commandSource.hasPermission(2))
                 .redirect(dtCommand)
         );
     }

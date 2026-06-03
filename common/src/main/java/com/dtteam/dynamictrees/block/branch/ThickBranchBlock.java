@@ -10,7 +10,7 @@ import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.utility.CoordUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -20,7 +20,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -35,7 +34,7 @@ public class ThickBranchBlock extends BasicBranchBlock implements Musable {
 
     protected static final VoxelShape[] trunkShapes = new VoxelShape[MAX_RADIUS_THICK];
 
-    public ThickBranchBlock(Identifier name, Properties properties) {
+    public ThickBranchBlock(ResourceLocation name, Properties properties) {
         super(name, properties, RADIUS_DOUBLE, MAX_RADIUS_THICK);
         precomputeTrunkShapes();
     }
@@ -79,9 +78,9 @@ public class ThickBranchBlock extends BasicBranchBlock implements Musable {
     }
 
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @org.jspecify.annotations.Nullable Orientation orientation, boolean movedByPiston) {
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block blockIn, BlockPos fromPos, boolean isMoving) {
         updateTrunkShells(level, pos, getRadius(state), 6);
-        super.neighborChanged(state, level, pos, block, orientation, movedByPiston);
+        super.neighborChanged(state, level, pos, blockIn, fromPos, isMoving);
     }
 
     private boolean updateTrunkShells(LevelAccessor level, BlockPos pos, int radius, int flags) {

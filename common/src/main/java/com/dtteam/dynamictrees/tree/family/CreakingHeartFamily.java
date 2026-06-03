@@ -1,19 +1,24 @@
 package com.dtteam.dynamictrees.tree.family;
 
 import com.dtteam.dynamictrees.DynamicTrees;
+import com.dtteam.dynamictrees.api.registry.RegistryHandler;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
-import com.dtteam.dynamictrees.block.branch.*;
-import com.dtteam.dynamictrees.tree.BranchEntry;
+import com.dtteam.dynamictrees.block.branch.BasicBranchBlock;
+import com.dtteam.dynamictrees.block.branch.BranchBlock;
+import com.dtteam.dynamictrees.block.branch.CreakingHeartBranchBlock;
+import com.dtteam.dynamictrees.block.branch.ResinBranchBlock;
+import com.dtteam.dynamictrees.block.branch.ThickBranchBlock;
 import com.dtteam.dynamictrees.tree.TreeHelper;
+import com.dtteam.dynamictrees.utility.Optionals;
 import net.minecraft.core.BlockPos;
-import net.minecraft.data.tags.TagAppender;
-import net.minecraft.resources.Identifier;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.data.tags.IntrinsicHolderTagsProvider;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -21,99 +26,83 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
-import org.jspecify.annotations.Nullable;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
+
+import static com.dtteam.dynamictrees.utility.ResourceLocationUtils.suffix;
 
 public class CreakingHeartFamily extends AltBranchFamily {
 
     public static final TypedRegistry.EntryType<Family> TYPE = TypedRegistry.newType(CreakingHeartFamily::new);
 
-    protected float treeHeartHardnessMultiplier = 10;
+    protected float treeHeartHardnessMultiplier = 1;
+    protected float treeBaseHardnessMultiplier = 0.125f;
     protected float hiddenHeartHardnessMultiplier = 0.4f;
-    protected Item resinItem = Items.RESIN_CLUMP;
-    protected Block resinBlock = Blocks.RESIN_CLUMP;
-    public static final int HEART_BRANCH_INDEX = 3;
+    protected Item resinItem = Items.SLIME_BALL;
+    protected Block resinBlock = Blocks.SLIME_BLOCK;
+    protected Supplier<BranchBlock> heartBranch;
+    protected Block primitiveHeartLog = Blocks.AIR;
 
-    public CreakingHeartFamily(Identifier name) {
+    public CreakingHeartFamily(ResourceLocation name) {
         super(name);
     }
-
-    ///////////////////////////////////////////
-    // HEART BRANCH
-    ///////////////////////////////////////////
 
     @Override
     public void setupBlocks() {
         super.setupBlocks();
-
-        addBranch(HEART_BRANCH_INDEX, new BranchEntry(this,getHeartBranchName())
-                .setCanBeStripped(true)
-                .CreateBlock(this::createHeartBranch));
+        this.heartBranch = this.setupBranch(this.createHeartBranch(this.getRegistryName()), true);
     }
 
-    protected Identifier getHeartBranchName(){
-        return this.getRegistryName().withSuffix("_creaking_heart").withSuffix(BranchBlock.NAME_SUFFIX);
+    protected Supplier<BranchBlock> createHeartBranch(final ResourceLocation name) {
+        return RegistryHandler.addBlock(suffix(name, "_creaking_heart" + BranchBlock.NAME_SUFFIX), () -> createHeartBranchBlock(name));
     }
 
-    protected BranchBlock createHeartBranch(Identifier name, BlockBehaviour.Properties properties) {
-        return new CreakingHeartBranchBlock(name, properties);
+    protected BranchBlock createHeartBranchBlock(ResourceLocation name) {
+        return new CreakingHeartBranchBlock(name, this.getProperties());
     }
 
     public Family setPrimitiveHeartLog(Block primitiveLog) {
-        branches.get(HEART_BRANCH_INDEX).setPrimitiveBlock(primitiveLog);
+        this.primitiveHeartLog = primitiveLog;
+        if (this.heartBranch != null) {
+            this.heartBranch.get().setPrimitiveLogDrops(new net.minecraft.world.item.ItemStack(primitiveLog));
+        }
         return this;
     }
 
     public Optional<BranchBlock> getHeartBranch() {
-        return getBranchBlock(HEART_BRANCH_INDEX);
+        return Optionals.ofBlock(this.heartBranch);
     }
 
     public Optional<Block> getPrimitiveHeartLog() {
-        return getPrimitiveLog(HEART_BRANCH_INDEX);
+        return Optionals.ofBlock(this.primitiveHeartLog);
     }
 
-    @Override
-    public List<Identifier> getBlockModelGenerators() {
-        List<Identifier> generators = new LinkedList<>(super.getBlockModelGenerators());
-        generators.add(heartBranchModelGenerator());
-        return generators;
-    }
-
-    protected Identifier heartBranchModelGenerator() {
+    public ResourceLocation getHeartBranchLoader() {
         return DynamicTrees.location("creaking_heart");
     }
 
-    public Identifier getHeartBranchLoader() {
-        return DynamicTrees.location("creaking_heart");
-    }
-
-    public void addHeartTextures(BiConsumer<String, Identifier> textureConsumer, Identifier primitiveLogLocation, Block sourceBlock, String state) {
+    public void addHeartTextures(BiConsumer<String, ResourceLocation> textureConsumer, ResourceLocation primitiveLogLocation, Block sourceBlock, String state) {
         Optional<Block> primHeart = getPrimitiveHeartLog();
-        if (primHeart.isPresent() && primHeart.get() == sourceBlock){
+        if (primHeart.isPresent() && primHeart.get() == sourceBlock) {
             String u = state.isEmpty() ? "" : "_";
-            Identifier barkAwake = primitiveLogLocation.withSuffix(u+state);
-            Identifier ringsAwake = primitiveLogLocation.withSuffix("_top"+u+state);
-            String textureName = state+u+"heart_branch";
-            if (this.textureOverrides.containsKey(textureName))
-                barkAwake = this.textureOverrides.get(textureName);
-            if (this.textureOverrides.containsKey(textureName+"_top"))
-                ringsAwake = this.textureOverrides.get(textureName+"_top");
-
+            ResourceLocation barkAwake = primitiveLogLocation.withSuffix(u + state);
+            ResourceLocation ringsAwake = primitiveLogLocation.withSuffix("_top" + u + state);
+            String textureName = state + u + "heart_branch";
+            if (this.textureOverrides.containsKey(textureName)) barkAwake = this.textureOverrides.get(textureName);
+            if (this.textureOverrides.containsKey(textureName + "_top")) ringsAwake = this.textureOverrides.get(textureName + "_top");
             textureConsumer.accept("heart_bark", barkAwake);
             textureConsumer.accept("heart_rings", ringsAwake);
         } else {
-            DynamicTrees.LOG.error("Attempted to load heart branch textures for family {} but the provided block {} was not it's heart branch.", getRegistryName(), primHeart);
+            DynamicTrees.LOG.error("Attempted to load heart branch textures for family {} but provided block {} was not its heart branch.", getRegistryName(), primHeart);
         }
     }
 
-    public void addGeneratedBlockTags (Function<TagKey<Block>, TagAppender<Block, Block>> tagAppender){
+    @Override
+    public void addGeneratedBlockTags(Function<TagKey<Block>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tagAppender) {
         super.addGeneratedBlockTags(tagAppender);
         getHeartBranch().ifPresent(branch -> {
             tierTag(getDefaultBranchHarvestTier(), tagAppender).ifPresent(tagBuilder -> tagBuilder.add(branch));
@@ -121,81 +110,49 @@ public class CreakingHeartFamily extends AltBranchFamily {
                 if (!isOnlyIfLoaded()) {
                     tagAppender.apply(tag).add(branch);
                 } else {
-                    tagAppender.apply(tag).addOptional(branch);
+                    tagAppender.apply(tag).addOptional(BuiltInRegistries.BLOCK.getKey(branch));
                 }
             });
         });
     }
 
     @Override
-    public List<Identifier> topBranchTextureLocations(){
-        List<Identifier> locations = super.topBranchTextureLocations();
-        if (getPrimitiveHeartLog().isPresent()){
-            locations.add(topBranchTextureLocation(getPrimitiveHeartLog().get(), "heart_branch_top"));
-        }
-
-        return locations;
-    }
-
-    ///////////////////////////////////////////
-    // OTHER BRANCHES
-    ///////////////////////////////////////////
-
-
-    @Override
-    protected BranchBlock createBranch(Identifier name, BlockBehaviour.Properties properties) {
-        return this.isThick() ? new ThickBranchBlock(name, properties){
+    protected BranchBlock createBranchBlock(ResourceLocation name) {
+        return this.isThick() ? new ThickBranchBlock(name, this.getProperties()) {
             @Override
             public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
-                return ((CreakingHeartFamily)getFamily()).getTreeHardness(state, level, pos, super.getHardness(state, level, pos));
+                return ((CreakingHeartFamily) getFamily()).getTreeHardness(state, level, pos, super.getHardness(state, level, pos));
             }
 
             @Override
             protected void attack(BlockState state, Level level, BlockPos pos, Player player) {
-                sendParticlesFromHeart(level, pos, state,(CreakingHeartFamily)getFamily());
                 super.attack(state, level, pos, player);
             }
-        } : new BasicBranchBlock(name, properties){
+        } : new BasicBranchBlock(name, this.getProperties()) {
             @Override
             public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
-                return ((CreakingHeartFamily)getFamily()).getTreeHardness(state, level, pos, super.getHardness(state, level, pos));
+                return ((CreakingHeartFamily) getFamily()).getTreeHardness(state, level, pos, super.getHardness(state, level, pos));
             }
 
             @Override
             protected void attack(BlockState state, Level level, BlockPos pos, Player player) {
-                sendParticlesFromHeart(level, pos, state,(CreakingHeartFamily)getFamily());
                 super.attack(state, level, pos, player);
             }
         };
     }
 
-    private static void sendParticlesFromHeart(Level level, BlockPos branchPos, BlockState branchState, CreakingHeartFamily family) {
-        if (!(level instanceof ServerLevel serverLevel)) return;
-        BlockPos heartPos = family.getHeartPos(branchState, level, branchPos);
-        if (heartPos == null) return;
-
-        int rad = TreeHelper.getRadius(branchState);
-        AABB source = AABB.unitCubeFromLowerCorner(Vec3.atLowerCornerOf(branchPos)).deflate(0.375).inflate(rad/12f);
-        AABB destination = AABB.unitCubeFromLowerCorner(Vec3.atLowerCornerOf(heartPos));
-
-        CreakingHeartBranchBlockEntity.emitParticlesToPosition(serverLevel, rad*2, false, destination, source);
-        CreakingHeartBranchBlockEntity.emitParticlesToPosition(serverLevel, rad*2, true, destination, source);
-
-        serverLevel.playSound(null, branchPos, SoundEvents.CREAKING_HEART_HURT, SoundSource.BLOCKS, 0.5f, 1.0F);
+    @Override
+    protected BranchBlock createAltBranchBlock(ResourceLocation name) {
+        return new ResinBranchBlock(name, this.getProperties());
     }
 
     @Override
-    protected BranchBlock createAltBranch(Identifier name, BlockBehaviour.Properties properties) {
-        return new ResinBranchBlock(name, properties);
-    }
-
-    @Override
-    protected Identifier getAltBranchName() {
+    protected ResourceLocation getAltBranchName() {
         return getBranchName("resin_");
     }
 
     @Override
-    protected Identifier altBranchModelGenerator() {
+    protected ResourceLocation altBranchModelGenerator() {
         return DynamicTrees.location("resin_branch");
     }
 
@@ -205,50 +162,46 @@ public class CreakingHeartFamily extends AltBranchFamily {
         return super.setPrimitiveLog(primitiveLog);
     }
 
-    public void addResinTextures(BiConsumer<String, Identifier> textureConsumer, Identifier primitiveResinLocation) {
-        Identifier resin = primitiveResinLocation;
+    public void addResinTextures(BiConsumer<String, ResourceLocation> textureConsumer, ResourceLocation primitiveResinLocation) {
+        ResourceLocation resin = primitiveResinLocation;
         if (this.textureOverrides.containsKey("resin")) {
             resin = this.textureOverrides.get("resin");
         }
 
         textureConsumer.accept("bark", resin);
-        textureConsumer.accept("rings", DynamicTrees.location("block/air"));
+        textureConsumer.accept("rings", resin);
     }
 
-    ///////////////////////////////////////////
-    // HEART LOGIC
-    ///////////////////////////////////////////
-
-    /**
-     * @return false if you are using a custom block entity for the heart.
-     * Otherwise, DT will register {@link com.dtteam.dynamictrees.block.branch.CreakingHeartBranchBlockEntity}
-     */
-    public boolean registerDefaultBlockEntity(){
-        return true;
+    public boolean registerDefaultBlockEntity() {
+        return false;
     }
 
-    /**
-     * This performs a DFS every time its called, avoid using it too often.
-     */
-    public boolean hasHeart(BlockState state, BlockGetter level, BlockPos pos){
+    public boolean hasHeart(BlockState state, BlockGetter level, BlockPos pos) {
+        if (!TreeHelper.isBranch(state)) {
+            return false;
+        }
         return getHeartPos(state, level, pos) != null;
     }
 
-    /**
-     * This performs a DFS every time its called, avoid using it too often.
-     */
     private @Nullable BlockPos getHeartPos(BlockState state, BlockGetter level, BlockPos pos) {
-        return CreakingHeartBranchBlock.findFromBranch(state, level, pos, this.getMaxSignalDepth());
+        final int maxSearchDepth = Math.max(1, Math.min(this.getMaxSignalDepth(), 256));
+        return CreakingHeartBranchBlock.findFromBranch(state, level, pos, maxSearchDepth);
     }
 
-    public float getTreeHardness(BlockState state, BlockGetter level, BlockPos pos, float baseHardness){
-        if (hasHeart(state, level, pos))
-            return baseHardness * treeHeartHardnessMultiplier;
-        return baseHardness;
+    public float getTreeHardness(BlockState state, BlockGetter level, BlockPos pos, float baseHardness) {
+        float hardness = baseHardness * treeBaseHardnessMultiplier;
+        if (hasHeart(state, level, pos)) {
+            hardness *= treeHeartHardnessMultiplier;
+        }
+        return hardness;
     }
 
     public void setTreeHeartHardnessMultiplier(float treeWhenHeartHardnessMultiplier) {
         this.treeHeartHardnessMultiplier = treeWhenHeartHardnessMultiplier;
+    }
+
+    public void setTreeBaseHardnessMultiplier(float treeBaseHardnessMultiplier) {
+        this.treeBaseHardnessMultiplier = treeBaseHardnessMultiplier;
     }
 
     public float getHiddenHeartHardnessMultiplier() {
@@ -265,6 +218,12 @@ public class CreakingHeartFamily extends AltBranchFamily {
 
     public Item getResinItem() {
         return resinItem;
+    }
+
+    public ItemStack createResinDrop(RandomSource random, int radius) {
+        final int safeRadius = Math.max(1, radius);
+        final int count = Math.max(1, Math.round(random.nextIntBetweenInclusive(2, 3) * (safeRadius / 8f)));
+        return new ItemStack(getResinItem(), count);
     }
 
     public void setResinBlock(Block resinBlock) {

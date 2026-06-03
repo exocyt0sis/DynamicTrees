@@ -12,15 +12,14 @@ import com.dtteam.dynamictrees.block.Growable;
 import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.data.DTLootTableBuilder;
 import com.dtteam.dynamictrees.treepack.Resettable;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.google.common.collect.Maps;
+import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.Util;
-import net.minecraft.world.item.Item;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -41,7 +40,6 @@ import org.apache.logging.log4j.LogManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -112,7 +110,6 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
      * up using vanilla loot tables.
      */
     private ItemStack itemStack;
-    private Item item;
 
     private float growthChance = 0.2F;
     private float requiredProductionFactor = 0.3F;
@@ -128,13 +125,8 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
     private BiFunction<LevelContext, BlockPos, Float> seasonalFactorGetter = (l, b)-> 1.0f;
     private TriPredicate<LevelContext, BlockPos, Float> floweringPeriodPredicate = (l, b, s)-> false;
 
-    public Pod(Identifier registryName) {
+    public Pod(ResourceLocation registryName) {
         super(registryName);
-    }
-
-    @Override
-    public final Class<Pod> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     public void setSeasonalFactorGetter(BiFunction<LevelContext, BlockPos, Float> seasonalFactorGetter) {
@@ -162,13 +154,14 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
      * @param properties the properties of the block. May be the {@linkplain #getDefaultBlockProperties default
      *                   properties} or a modification of them.
      */
-    public final void createBlock(@Nullable Identifier name, Block.Properties properties) {
-        Identifier id = name == null ? this.getRegistryName() : name;
-        block = RegistryHandler.addBlock(id, () -> {
-            if (hasVariableOffset())
-                return new OffsetablePodBlock(id, properties, this);
-            else return new PodBlock(id, properties, this);
-        });
+    public final void createBlock(@Nullable ResourceLocation name, Block.Properties properties) {
+        block = RegistryHandler.addBlock(name == null ? this.getRegistryName() : name, () -> createBlock(properties));
+    }
+
+    protected PodBlock createBlock(Block.Properties properties) {
+        if (hasVariableOffset())
+            return new OffsetablePodBlock(properties, this);
+        else return new PodBlock(properties, this);
     }
 
     public MapColor getDefaultMapColor() {
@@ -182,7 +175,7 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
     public BlockBehaviour.Properties getDefaultBlockProperties(MapColor mapColor) {
         return BlockBehaviour.Properties.of()
                 .mapColor(mapColor)
-                .noCollision()
+                .noCollission()
                 .pushReaction(PushReaction.DESTROY)
                 .sound(SoundType.CROP)
                 .randomTicks()
@@ -237,21 +230,22 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
      * @return a copy of this pod's item stack
      */
     public final ItemStack getItemStack() {
-        if (itemStack != null)
-            return itemStack.copy();
-        else if (item != null)
-            return new ItemStack(item);
-        LogManager.getLogger().warn("Invoked too early or item was not set on \"{}\".", getRegistryName());
-        return new ItemStack(Items.AIR);
+        if (itemStack == null) {
+            LogManager.getLogger().warn("Invoked too early or item was not set on \"" + getRegistryName() + "\".");
+            return new ItemStack(Items.AIR);
+        }
+        return itemStack.copy();
     }
 
-    public void setItem(Item item) {
-        this.item = item;
+    /**
+     * @return {@code true} if the given {@code itemStack} matches this Pod's item
+     */
+    public boolean isItem(ItemStack itemStack) {
+        return ItemStack.matches(this.itemStack, itemStack);
     }
 
-    public void setItemStack(ItemStack stack) {
-        this.itemStack = stack;
-        this.item = stack.getItem();
+    public void setItemStack(ItemStack itemStack) {
+        this.itemStack = itemStack;
     }
 
     public final float getGrowthChance() {
@@ -329,17 +323,17 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
         return true;
     }
 
-    private final LazyValue<Identifier> blockDropsPath = LazyValue.supplied(() ->
-            IdentifierUtils.prefix(BuiltInRegistries.BLOCK.getKey(block.get()), "blocks/"));
+    private final LazyValue<ResourceLocation> blockDropsPath = LazyValue.supplied(() ->
+            ResourceLocationUtils.prefix(BuiltInRegistries.BLOCK.getKey(block.get()), "blocks/"));
 
-    public Identifier getBlockDropsPath() {
+    public ResourceLocation getBlockDropsPath() {
         return blockDropsPath.get();
     }
 
     public LootTable.Builder createBlockDrops(HolderLookup.Provider registries) {
         if (minDropCount > maxDropCount || maxDropCount <= 0)
             throw new IllegalArgumentException("Attempted to create loot tables for "+getRegistryName()+" with an invalid drop count range ["+minDropCount+","+maxDropCount+"].");
-        return DTLootTableBuilder.createFruitPodDrops(block.get(), item, ageProperty, maxAge, minDropCount, maxDropCount, registries);
+        return DTLootTableBuilder.createFruitPodDrops(block.get(), itemStack.getItem(), ageProperty, maxAge, minDropCount, maxDropCount, registries);
     }
 
     public void setMaxRadius(int maxRadius) {
@@ -373,11 +367,6 @@ public class Pod extends RegistryEntry<Pod> implements Resettable<Pod> {
         seasonalFactorGetter = (l,b)-> 1.0f;
         floweringPeriodPredicate = (l, b, s)-> false;
         return this;
-    }
-
-    @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("pod"));
     }
 
 }

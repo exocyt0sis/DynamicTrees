@@ -2,8 +2,9 @@ package com.dtteam.dynamictrees.platform;
 
 import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.entity.FallingTreeEntity;
-import com.dtteam.dynamictrees.model.entity.FallingTreeEntityModel;
+import com.dtteam.dynamictrees.model.FallingTreeEntityModel;
 import com.dtteam.dynamictrees.platform.services.IClientHelper;
+import com.dtteam.dynamictrees.registry.FallingTreeEntityModelNF;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 public class NeoForgeClientHelper implements IClientHelper {
@@ -20,7 +21,7 @@ public class NeoForgeClientHelper implements IClientHelper {
 
     @Override
     public FallingTreeEntityModel newFallingTreeEntityModel(FallingTreeEntity entity) {
-        return new FallingTreeEntityModel(entity);
+        return new FallingTreeEntityModelNF(entity);
     }
 
 }

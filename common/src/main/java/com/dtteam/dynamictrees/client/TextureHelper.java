@@ -25,7 +25,7 @@ public class TextureHelper {
             pixels = new int[w * h];
             for (int x = 0; x < w; x++) {
                 for (int y = 0; y < h; y++) {
-                    pixels[calcPos(x, y)] = image.getPixel(x, y);
+                    pixels[calcPos(x, y)] = image.getPixelRGBA(x, y);
                 }
             }
 
@@ -57,7 +57,7 @@ public class TextureHelper {
             NativeImage image = new NativeImage(w, h, true);
             for (int x = 0; x < w; x++) {
                 for (int y = 0; y < h; y++) {
-                    image.setPixel(x, y, getPixel(x, y));
+                    image.setPixelRGBA(x, y, getPixel(x, y));
                 }
             }
             return image;
@@ -167,7 +167,7 @@ public class TextureHelper {
         return (c >> 24) & 0xFF;
     }
 
-    public static int red(int c) {
+    public static int blue(int c) {
         return (c >> 16) & 0xFF;
     }
 
@@ -175,7 +175,7 @@ public class TextureHelper {
         return (c >> 8) & 0xFF;
     }
 
-    public static int blue(int c) {
+    public static int red(int c) {
         return (c) & 0xFF;
     }
 
@@ -187,12 +187,12 @@ public class TextureHelper {
 
         int count = 0;
 
-        for (int pixel : pixels) {
-            int alpha = alpha(pixel);
+        for (int i = 0; i < pixels.length; i++) {
+            int alpha = alpha(pixels[i]);
             if (alpha >= 128) {
-                rAccum += red(pixel);
-                gAccum += green(pixel);
-                bAccum += blue(pixel);
+                rAccum += red(pixels[i]);
+                gAccum += green(pixels[i]);
+                bAccum += blue(pixels[i]);
                 count++;
             }
         }

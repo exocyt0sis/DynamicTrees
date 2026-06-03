@@ -4,8 +4,8 @@ import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.SimpleRegistry;
 import com.dtteam.dynamictrees.api.voxmap.SimpleVoxmap;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
-import net.minecraft.resources.Identifier;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
+import net.minecraft.resources.ResourceLocation;
 
 public abstract class CellKit extends RegistryEntry<CellKit> {
 
@@ -44,13 +44,8 @@ public abstract class CellKit extends RegistryEntry<CellKit> {
      */
     public static final SimpleRegistry<CellKit> REGISTRY = new SimpleRegistry<>(CellKit.class, NULL_CELL_KIT);
 
-    public CellKit(final Identifier registryName) {
+    public CellKit(final ResourceLocation registryName) {
         this.setRegistryName(registryName);
-    }
-
-    @Override
-    public final Class<CellKit> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     public abstract Cell getCellForLeaves(int distance);
@@ -74,10 +69,10 @@ public abstract class CellKit extends RegistryEntry<CellKit> {
     //////////////////////////////
 
     public static CellKit findCellKit(String name) {
-        return findCellKit(IdentifierUtils.parseDTLocation(name));
+        return findCellKit(ResourceLocationUtils.parseDTLocation(name));
     }
 
-    public static CellKit findCellKit(Identifier name) {
+    public static CellKit findCellKit(ResourceLocation name) {
         return CellKit.REGISTRY.get(name);
     }
 

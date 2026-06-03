@@ -1,35 +1,37 @@
 package com.dtteam.dynamictrees.event.handler;
 
 import com.dtteam.dynamictrees.DynamicTrees;
-import com.dtteam.dynamictrees.api.registry.Registries;
-import com.dtteam.dynamictrees.api.registry.Registry;
-import com.dtteam.dynamictrees.api.registry.SimpleRegistry;
-import com.dtteam.dynamictrees.api.worldgen.FeatureCanceller;
+import com.dtteam.dynamictrees.api.worldgen.LevelContext;
 import com.dtteam.dynamictrees.command.DTCommand;
-import com.dtteam.dynamictrees.deserialization.JsonDeserializers;
+import com.dtteam.dynamictrees.compat.vanillabackport.CreakingCompatSpawner;
+import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.recipe.DendroPotionRecipeHandler;
 import com.dtteam.dynamictrees.systems.FutureBreak;
+import com.dtteam.dynamictrees.systems.poissondisc.UniversalPoissonDiscProvider;
 import com.dtteam.dynamictrees.systems.season.SeasonCompatibilityHandler;
 import com.dtteam.dynamictrees.systems.season.SeasonHelper;
 import com.dtteam.dynamictrees.treepack.Resources;
 import com.dtteam.dynamictrees.worldgen.BiomeDatabases;
 import com.dtteam.dynamictrees.worldgen.feature.DynamicTreeFeature;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.brewing.RegisterBrewingRecipesEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+import net.neoforged.neoforge.event.level.ChunkDataEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
-import net.neoforged.neoforge.registries.NewRegistryEvent;
-import net.neoforged.neoforge.registries.RegisterEvent;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 @EventBusSubscriber(modid = DynamicTrees.MOD_ID)
 public class CommonGameEventHandler {
@@ -42,8 +44,11 @@ public class CommonGameEventHandler {
     public static void onPreLevelTick(LevelTickEvent.Pre event) {
         if (!event.getLevel().isClientSide()) {
             FutureBreak.process(event.getLevel());
+            if (event.getLevel() instanceof ServerLevel serverLevel) {
+                CreakingCompatSpawner.tick(serverLevel);
+            }
         }
-        SeasonHelper.updateTick(event.getLevel(), event.getLevel().getDefaultClockTime());
+        SeasonHelper.updateTick(event.getLevel(), event.getLevel().getDayTime());
     }
 
     @SubscribeEvent
@@ -66,61 +71,39 @@ public class CommonGameEventHandler {
         }
     }
 
-    //TODO: use Data Attachments
-//    @SubscribeEvent
-//    @SuppressWarnings("ConstantConditions")
-//    public static void onChunkDataLoad(ChunkDataEvent.Load event) {
-//        if (!DTConfigs.SERVER.worldGen.get()) return;
-//
-//        final LevelAccessor level = event.getLevel();
-//
-//		if (level == null || level.isClientSide()) return;
-//
-//        final byte[] circleData = readChunkByteArray(event.getData(), UniversalPoissonDiscProvider.CIRCLE_DATA_ID);
-//        final UniversalPoissonDiscProvider discProvider = DynamicTreeFeature.DISC_PROVIDER;
-//
-//        final ChunkPos chunkPos = event.getChunk().getPos();
-//        discProvider.setChunkPoissonData(LevelContext.create(level), chunkPos, circleData);
-//    }
-//
-//    @SubscribeEvent
-//    public static void onChunkDataSave(ChunkDataEvent.Save event) {
-//        if (!DTConfigs.SERVER.worldGen.get()) return;
-//
-//        final LevelContext levelContext = LevelContext.create(event.getLevel());
-//        final UniversalPoissonDiscProvider discProvider = DynamicTreeFeature.DISC_PROVIDER;
-//        final ChunkAccess chunk = event.getChunk();
-//        final ChunkPos chunkPos = chunk.getPos();
-//
-//        final byte[] circleData = discProvider.getChunkPoissonData(levelContext, chunkPos);
-//        writeChunkByteArray(event.getData(), UniversalPoissonDiscProvider.CIRCLE_DATA_ID, circleData); // Set circle data.
-//
-//		if (chunk instanceof LevelChunk && !((LevelChunk) chunk).loaded) {
-//			discProvider.unloadChunkPoissonData(levelContext, chunkPos);
-//		}
-//    }
-//
-//    private static byte[] readChunkByteArray(SerializableChunkData data, String key){
-//        CompoundTag tag = data.attachmentData();
-//        try {
-//            assert tag != null;
-//            if (tag.contains(key)) return ((ByteArrayTag) Objects.requireNonNull(tag.get(key))).getAsByteArray();
-//        } catch (ClassCastException classcastexception) {
-//            throw new NbtException(String.format("Exception loading %s tag from Chunk Data", key));
-//        }
-//
-//        return new byte[0];
-//    }
-//
-//    private static void writeChunkByteArray(SerializableChunkData data, String key, byte[] bytes){
-//        CompoundTag tag = data.attachmentData();
-//        try {
-//            assert tag != null;
-//            tag.put(key, new ByteArrayTag(bytes));
-//        } catch (AssertionError exception) {
-//            throw new NbtException(String.format("Exception saving %s tag into Chunk Data", key));
-//        }
-//    }
+    @SubscribeEvent
+    public static void onChunkDataLoad(ChunkDataEvent.Load event) {
+        if (!DTConfigs.SERVER.worldGen.get()) return;
+
+        final LevelAccessor level = event.getLevel();
+
+		if (level == null || level.isClientSide()) {
+			return;
+		}
+
+        final byte[] circleData = event.getData().getByteArray(UniversalPoissonDiscProvider.CIRCLE_DATA_ID);
+        final UniversalPoissonDiscProvider discProvider = DynamicTreeFeature.DISC_PROVIDER;
+
+        final ChunkPos chunkPos = event.getChunk().getPos();
+        discProvider.setChunkPoissonData(LevelContext.create(level), chunkPos, circleData);
+    }
+
+    @SubscribeEvent
+    public static void onChunkDataSave(ChunkDataEvent.Save event) {
+        if (!DTConfigs.SERVER.worldGen.get()) return;
+
+        final LevelContext levelContext = LevelContext.create(event.getLevel());
+        final UniversalPoissonDiscProvider discProvider = DynamicTreeFeature.DISC_PROVIDER;
+        final ChunkAccess chunk = event.getChunk();
+        final ChunkPos chunkPos = chunk.getPos();
+
+        final byte[] circleData = discProvider.getChunkPoissonData(levelContext, chunkPos);
+        event.getData().putByteArray(UniversalPoissonDiscProvider.CIRCLE_DATA_ID, circleData); // Set circle data.
+
+		if (chunk instanceof LevelChunk && !((LevelChunk) chunk).loaded) {
+			discProvider.unloadChunkPoissonData(levelContext, chunkPos);
+		}
+    }
 
     ///////////////////////////////////////////
     // SERVER
@@ -141,8 +124,8 @@ public class CommonGameEventHandler {
     ///////////////////////////////////////////
 
     @SubscribeEvent
-    public static void addReloadListeners(final AddServerReloadListenersEvent event) {
-        event.addListener(DynamicTrees.location("resource_reload_listener"), new Resources.ReloadListener(event.getServerResources().getRecipeManager()));
+    public static void addReloadListeners(final AddReloadListenerEvent event) {
+        event.addListener(new Resources.ReloadListener(event.getServerResources().getRecipeManager()));
     }
 
     ///////////////////////////////////////////
@@ -155,38 +138,23 @@ public class CommonGameEventHandler {
                 recipe -> event.getBuilder().addRecipe(recipe));
     }
 
+        ///////////////////////////////////////////
+        // ENTITY
+        ///////////////////////////////////////////
+
     @SubscribeEvent
-    public static void newRegistry(NewRegistryEvent event) {
-        final List<SimpleRegistry<?>> registries = Registries.REGISTRIES.stream()
-                .filter(registry -> registry instanceof SimpleRegistry)
-                .map(registry -> (SimpleRegistry<?>) registry)
-                .collect(Collectors.toList());
-
-        // Post registry events.
-        registries.forEach(SimpleRegistry::postRegistryEvent);
-
-        Resources.setupTreesResourceManager();
-
-        // Register Forge registry entry getters and add-on Json object getters.
-        JsonDeserializers.registerRegistryEntryGetters();
-        JsonDeserializers.postRegistryEvent();
-
-        // Register feature cancellers.
-        FeatureCanceller.REGISTRY.postRegistryEvent();
-        FeatureCanceller.REGISTRY.lock();
+    public static void onCreakingDamagedIncoming(final LivingIncomingDamageEvent event) {
+        CreakingCompatSpawner.onCreakingDamaged(event.getEntity(), event.getSource());
     }
 
     @SubscribeEvent
-    public static void loadResources(RegisterEvent event) {
-        if (event.getRegistryKey() != BuiltInRegistries.BLOCK.key()) {
-            return;
-        }
-        // Register any registry entries from JSON files.
-        Resources.MANAGER.load();
-        // Lock all the registries.
-        Registries.REGISTRIES.stream()
-                .filter(registry -> registry instanceof SimpleRegistry)
-                .forEach(Registry::lock);
+    public static void onCreakingDamagedPre(final LivingDamageEvent.Pre event) {
+        CreakingCompatSpawner.onCreakingDamaged(event.getEntity(), event.getSource());
+    }
+
+    @SubscribeEvent
+    public static void onCreakingDamagedPost(final LivingDamageEvent.Post event) {
+        CreakingCompatSpawner.onCreakingDamaged(event.getEntity(), event.getSource());
     }
 
 }

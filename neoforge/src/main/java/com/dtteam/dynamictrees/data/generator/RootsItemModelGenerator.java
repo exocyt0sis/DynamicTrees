@@ -1,35 +1,42 @@
 package com.dtteam.dynamictrees.data.generator;
 
+import com.dtteam.dynamictrees.data.DTDataProvider;
+import com.dtteam.dynamictrees.data.Generator;
+import com.dtteam.dynamictrees.data.provider.DTItemModelProvider;
 import com.dtteam.dynamictrees.tree.family.Family;
-import com.dtteam.dynamictrees.tree.family.AerialRootsFamily;
-import net.minecraft.resources.Identifier;
+import com.dtteam.dynamictrees.tree.family.UndergroundRootsFamily;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-
-import java.util.Map;
+import net.neoforged.neoforge.client.model.generators.ItemModelBuilder;
 
 /**
  * @author Max Hyper
  */
-public class RootsItemModelGenerator extends BranchItemModelGenerator {
+public class RootsItemModelGenerator implements Generator<DTDataProvider.ItemModel, Family> {
 
+    public static final DependencyKey<Item> ROOT_ITEM = new DependencyKey<>("root_item");
+    public static final DependencyKey<Block> PRIMITIVE_ROOT = new DependencyKey<>("primitive_root");
     @Override
-    protected void addTextures(Family input, Map<String, Identifier> textures, Identifier primitiveLogPath, Block primitiveLog) {
-        if (input instanceof AerialRootsFamily rootsFamily){
-            rootsFamily.addRootTextures(textures::put, primitiveLogPath);
+    public void generate(DTDataProvider.ItemModel prov, Family input, Dependencies dependencies) {
+        if (prov instanceof DTItemModelProvider provider){
+            final ItemModelBuilder builder = provider.withExistingParent(
+                    String.valueOf(BuiltInRegistries.ITEM.getKey(dependencies.get(ROOT_ITEM))),
+                    input.getRootItemParentLocation()
+            );
+            input.addRootTextures(
+                    builder::texture,
+                    provider.block(BuiltInRegistries.BLOCK.getKey(dependencies.get(PRIMITIVE_ROOT)))
+            );
         }
     }
 
     @Override
-    protected String itemParentLocation(Family family){
-        return family.getRootItemParentLocation().toString();
-    }
-
-    @Override
     public Dependencies gatherDependencies(Family input) {
-        AerialRootsFamily mangroveInput = (AerialRootsFamily) input;
+        UndergroundRootsFamily mangroveInput = (UndergroundRootsFamily) input;
         return new Dependencies()
-                .append(BRANCH_ITEM, mangroveInput.getRootsItem())
-                .append(PRIMITIVE_BLOCK, mangroveInput.getPrimitiveRoots());
+                .append(ROOT_ITEM, mangroveInput.getRootsItem())
+                .append(PRIMITIVE_ROOT, mangroveInput.getPrimitiveRoots());
     }
 
 }

@@ -3,7 +3,7 @@ package com.dtteam.dynamictrees.api.worldgen;
 import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.SimpleRegistry;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 
 /**
@@ -20,13 +20,8 @@ public abstract class FeatureCanceller extends RegistryEntry<FeatureCanceller> {
 
     public static final SimpleRegistry<FeatureCanceller> REGISTRY = new SimpleRegistry<>(FeatureCanceller.class, NULL_CANCELLER);
 
-    public FeatureCanceller(final Identifier registryName) {
+    public FeatureCanceller(final ResourceLocation registryName) {
         super(registryName);
-    }
-
-    @Override
-    public final Class<FeatureCanceller> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     /**

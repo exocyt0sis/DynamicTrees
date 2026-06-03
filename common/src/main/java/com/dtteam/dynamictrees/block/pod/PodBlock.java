@@ -8,13 +8,11 @@ import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -28,7 +26,6 @@ import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.pathfinder.PathComputationType;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -47,8 +44,8 @@ public class PodBlock extends HorizontalDirectionalBlock implements Bonemealable
         super(properties);
         pod = Pod.NULL;
     }
-    public PodBlock(Identifier id, Properties properties, Pod pod) {
-        super(properties.setId(ResourceKey.create(Registries.BLOCK, id)));
+    public PodBlock(Properties properties, Pod pod) {
+        super(properties);
         this.pod = pod;
 
         // Reset block state definition, as we need the pod to be set to create it properly.
@@ -137,7 +134,7 @@ public class PodBlock extends HorizontalDirectionalBlock implements Bonemealable
     }
 
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @org.jspecify.annotations.Nullable Orientation orientation, boolean movedByPiston) {
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
         if (!this.isSupported(level, pos, state)) {
             drop(level, pos, state);
         }
@@ -178,9 +175,8 @@ public class PodBlock extends HorizontalDirectionalBlock implements Bonemealable
 //        }
 //    }
 
-
     @Override
-    protected ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
         return pod.getItemStack();
     }
 
@@ -194,8 +190,8 @@ public class PodBlock extends HorizontalDirectionalBlock implements Bonemealable
     }
 
     @Override
-    protected InteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
-        return harvest(state, level, pos) ? InteractionResult.SUCCESS : InteractionResult.PASS;
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+        return harvest(state, level, pos) ? ItemInteractionResult.SUCCESS : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
@@ -264,7 +260,4 @@ public class PodBlock extends HorizontalDirectionalBlock implements Bonemealable
         return false;
     }
 
-    public Pod getPod() {
-        return pod;
-    }
 }

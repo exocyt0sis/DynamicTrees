@@ -4,7 +4,11 @@
     "common_species": "pale_oak",
     "primitive_log": "pale_oak_log",
     "primitive_stripped_log": "stripped_pale_oak_log",
-    "primitive_heart": "creaking_heart",
+    "primitive_heart": "minecraft:creaking_heart",
+    "resin_item": "minecraft:resin_clump",
+    "resin_block": "minecraft:resin_block",
+    "tree_base_hardness_multiplier": 0.125,
+    "tree_heart_hardness_multiplier": 1.0,
     "max_branch_radius": 24,
     "generate_surface_root": true
 }

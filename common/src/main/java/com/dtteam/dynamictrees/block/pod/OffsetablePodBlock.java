@@ -3,24 +3,20 @@ package com.dtteam.dynamictrees.block.pod;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 public class OffsetablePodBlock extends PodBlock{
 
-    public OffsetablePodBlock(Identifier id, Properties properties, Pod pod) {
-        super(id, properties, pod);
+    public OffsetablePodBlock(Properties properties, Pod pod) {
+        super(properties, pod);
     }
 
     @Override
@@ -41,15 +37,16 @@ public class OffsetablePodBlock extends PodBlock{
         return null;
     }
 
+    @SuppressWarnings("deprecation")
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @org.jspecify.annotations.Nullable Orientation orientation, boolean movedByPiston) {
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos, boolean isMoving) {
         Direction direction = state.getValue(FACING);
         int currentOffset = state.getValue(pod.getOffsetProperty());
-        int newOffset = TreeHelper.getRadius(level, pos.offset(direction.getUnitVec3i()));
+        int newOffset = TreeHelper.getRadius(level, pos.offset(direction.getNormal()));
         if (currentOffset != newOffset && pod.isValidRadius(newOffset)){
             level.setBlock(pos, state.setValue(pod.getOffsetProperty(), newOffset), 2);
         }
-        super.neighborChanged(state, level, pos, block, orientation, movedByPiston);
+        super.neighborChanged(state, level, pos, block, fromPos, isMoving);
     }
 
     @Override

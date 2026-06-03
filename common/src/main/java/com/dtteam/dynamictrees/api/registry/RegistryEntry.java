@@ -1,13 +1,13 @@
 package com.dtteam.dynamictrees.api.registry;
 
+import com.dtteam.dynamictrees.data.DTDataProvider;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -17,14 +17,14 @@ import java.util.function.Consumer;
  */
 public abstract class RegistryEntry<T extends RegistryEntry<T>> {
 
-    private Identifier registryName;
+    private ResourceLocation registryName;
     private boolean valid = true;
     private boolean generateData;
 
     protected RegistryEntry() {
     }
 
-    protected RegistryEntry(Identifier registryName) {
+    protected RegistryEntry(ResourceLocation registryName) {
         this.registryName = registryName;
     }
 
@@ -113,19 +113,16 @@ public abstract class RegistryEntry<T extends RegistryEntry<T>> {
         this.generateData = generateData;
     }
 
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of();
+    public void generateStateData(DTDataProvider.BlockState provider) {
     }
 
-    public List<Identifier> getItemModelGenerators() {
-        return List.of();
+    public void generateItemModelData(DTDataProvider.ItemModel provider) {
     }
 
-    public List<Identifier> getLangGenerators() {
-        return List.of();
+    public void generateLangData(DTDataProvider.Language provider) {
     }
 
-    public final Identifier getRegistryName() {
+    public final ResourceLocation getRegistryName() {
         return this.registryName;
     }
 
@@ -135,12 +132,14 @@ public abstract class RegistryEntry<T extends RegistryEntry<T>> {
 
     protected Component formatComponent(final Component component, final ChatFormatting colour) {
         return component.copy().withStyle(style -> style.withColor(colour)
-                .withHoverEvent(new HoverEvent.ShowText(Component.translatable("chat.registry_name", this.getRegistryName().toString())))
-                .withClickEvent(() -> ClickEvent.Action.COPY_TO_CLIPBOARD));
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                        Component.translatable("chat.registry_name", this.getRegistryName().toString())))
+                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,
+                        this.getRegistryName().toString())));
     }
 
     @SuppressWarnings("unchecked")
-    public final T setRegistryName(final Identifier registryName) {
+    public final T setRegistryName(final ResourceLocation registryName) {
         this.registryName = registryName;
         return (T) this;
     }
@@ -169,7 +168,5 @@ public abstract class RegistryEntry<T extends RegistryEntry<T>> {
 
         return stringBuilder.toString();
     }
-
-    public abstract Class<T> getRegistryType();
 
 }

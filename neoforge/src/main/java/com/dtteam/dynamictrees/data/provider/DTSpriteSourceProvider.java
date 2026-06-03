@@ -5,9 +5,9 @@ import com.dtteam.dynamictrees.client.ThickBranchRingsSource;
 import com.dtteam.dynamictrees.tree.family.Family;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.data.AtlasIds;
 import net.minecraft.data.PackOutput;
-import net.neoforged.neoforge.client.data.SpriteSourceProvider;
+import net.neoforged.neoforge.common.data.ExistingFileHelper;
+import net.neoforged.neoforge.common.data.SpriteSourceProvider;
 
 import java.util.Arrays;
 import java.util.List;
@@ -18,9 +18,9 @@ public class DTSpriteSourceProvider extends SpriteSourceProvider {
     private final String modId;
     private final List<Registry<Family>> registries;
 
-    public DTSpriteSourceProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, String modId,
+    public DTSpriteSourceProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, String modId, ExistingFileHelper existingFileHelper,
                                   Registry<?>... registries) {
-        super(output, lookupProvider, modId);
+        super(output, lookupProvider, modId, existingFileHelper);
         this.modId = modId;
         this.registries = ImmutableList.copyOf(castToFamilyRegistries(registries));
     }
@@ -34,7 +34,7 @@ public class DTSpriteSourceProvider extends SpriteSourceProvider {
 
     @Override
     protected void gather() {
-        SourceList blockSourceList = atlas(AtlasIds.BLOCKS);
+        SourceList blockSourceList = atlas(BLOCKS_ATLAS);
         this.registries.forEach(registry ->
                 registry.dataGenerationStream(this.modId).forEach(
                         family -> gatherForFamily(family, blockSourceList)

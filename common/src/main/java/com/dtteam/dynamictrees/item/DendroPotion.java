@@ -9,10 +9,7 @@ import com.dtteam.dynamictrees.systems.substance.GrowthSubstance;
 import com.dtteam.dynamictrees.systems.substance.HarvestSubstance;
 import com.dtteam.dynamictrees.systems.substance.MegaSubstance;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -77,8 +74,8 @@ public class DendroPotion extends Item implements SubstanceEffectProvider, Empti
         }
     }
 
-    public DendroPotion(Identifier id) {
-        super(new Properties().stacksTo(1).setId(ResourceKey.create(Registries.ITEM, id)));
+    public DendroPotion() {
+        super(new Properties().stacksTo(1));
     }
 
     public static ItemStack applyIndexTag(final ItemStack potionStack, final int potionIndex) {
@@ -104,8 +101,12 @@ public class DendroPotion extends Item implements SubstanceEffectProvider, Empti
     }
 
     @Override
-    public Component getName(ItemStack stack) {
-        return Component.translatable(this.getDescriptionId() + "." + getPotionType(stack).getName());
+    public String getDescriptionId(ItemStack stack) {
+        return this.getDescriptionId() + "." + getPotionType(stack).getName();
+    }
+
+    public int getColor(ItemStack stack, int tint) {
+        return tint == 0 ? getPotionType(stack).getColor() : 0xFFFFFFFF;
     }
 
     @Override

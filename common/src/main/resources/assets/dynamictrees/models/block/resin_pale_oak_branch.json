@@ -1,0 +1,7 @@
+{
+  "loader": "dynamictrees:branch",
+  "textures": {
+    "bark": "minecraft:block/resin_block",
+    "rings": "minecraft:block/pale_oak_log_top"
+  }
+}

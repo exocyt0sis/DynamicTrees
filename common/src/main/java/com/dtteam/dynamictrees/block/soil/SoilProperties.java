@@ -1,6 +1,7 @@
 package com.dtteam.dynamictrees.block.soil;
 
 import com.dtteam.dynamictrees.DynamicTrees;
+import com.dtteam.dynamictrees.api.lazyvalue.MutableLazyValue;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.RegistryHandler;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
@@ -12,10 +13,9 @@ import com.dtteam.dynamictrees.treepack.Resettable;
 import com.dtteam.dynamictrees.utility.Optionals;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.client.data.models.BlockModelGenerators;
-import net.minecraft.client.data.models.ItemModelGenerators;
-import net.minecraft.data.tags.TagAppender;
-import net.minecraft.resources.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.data.tags.IntrinsicHolderTagsProvider;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -29,19 +29,19 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import static com.dtteam.dynamictrees.utility.IdentifierUtils.prefix;
+import static com.dtteam.dynamictrees.utility.ResourceLocationUtils.prefix;
 
 /**
  * @author Max Hyper
  */
 public class SoilProperties extends RegistryEntry<SoilProperties> implements Resettable<SoilProperties> {
 
-    public static final HashMap<Identifier, Supplier<Generator<BlockModelGenerators, SoilProperties>>> blockStateGenerators = new HashMap<>();
-    public static final HashMap<Identifier, Supplier<Generator<ItemModelGenerators, SoilProperties>>> itemModelGenerators = new HashMap<>();
-    public static final HashMap<Identifier, Supplier<Generator<DTDataProvider.Language, SoilProperties>>> languageGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.BlockState, SoilProperties>>> blockStateGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.ItemModel, SoilProperties>>> itemModelGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.Language, SoilProperties>>> languageGenerators = new HashMap<>();
 
     public static final Codec<SoilProperties> CODEC = RecordCodecBuilder.create(instance -> instance
-            .group(Identifier.CODEC.fieldOf(TypedRegistry.RESOURCE_LOCATION.toString()).forGetter(SoilProperties::getRegistryName))
+            .group(ResourceLocation.CODEC.fieldOf(TypedRegistry.RESOURCE_LOCATION.toString()).forGetter(SoilProperties::getRegistryName))
             .apply(instance, SoilProperties::new));
 
     public static final SoilProperties NULL_SOIL_PROPERTIES = new SoilProperties() {
@@ -74,17 +74,18 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
     protected Block primitiveSoilBlock;
     protected Supplier<SoilBlock> block;
     protected Integer soilFlags = 0;
-    private Identifier blockRegistryName;
+    private ResourceLocation blockRegistryName;
     protected boolean generateBlock = true;
     protected List<String> onlyIfLoaded = new ArrayList<>();
-    protected int foliageTintLayerCount = 1;
+    protected int foliageTintIndex = 0;
+    protected int rootsTintIndex = 1;
 
     //used for null soil properties
     protected SoilProperties() {
     }
 
     //used for Dirt Helper registrations only
-    protected SoilProperties(final Block primitiveBlock, Identifier name, Integer soilFlags, boolean generate) {
+    protected SoilProperties(final Block primitiveBlock, ResourceLocation name, Integer soilFlags, boolean generate) {
         this(primitiveBlock, name);
         this.soilFlags = soilFlags;
         if (generate) {
@@ -92,18 +93,13 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
         }
     }
 
-    public SoilProperties(final Identifier registryName) {
+    public SoilProperties(final ResourceLocation registryName) {
         this(null, registryName);
     }
 
-    public SoilProperties(@Nullable final Block primitiveBlock, final Identifier registryName) {
+    public SoilProperties(@Nullable final Block primitiveBlock, final ResourceLocation registryName) {
         super(registryName);
         this.primitiveSoilBlock = primitiveBlock != null ? primitiveBlock : Blocks.AIR;
-    }
-
-    @Override
-    public final Class<SoilProperties> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     ///////////////////////////////////////////
@@ -159,11 +155,11 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
         return "rooty_";
     }
 
-    public Identifier getBlockRegistryName() {
+    public ResourceLocation getBlockRegistryName() {
         return this.blockRegistryName;
     }
 
-    public SoilProperties setBlockRegistryName(Identifier blockRegistryName) {
+    public SoilProperties setBlockRegistryName(ResourceLocation blockRegistryName) {
         this.blockRegistryName = blockRegistryName;
         return this;
     }
@@ -185,7 +181,7 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
     }
 
     protected SoilBlock createBlock(BlockBehaviour.Properties blockProperties) {
-        return new SoilBlock(blockRegistryName, this, blockProperties);
+        return new SoilBlock(this, blockProperties);
     }
 
     public void setBlock(SoilBlock soilBlock) {
@@ -204,12 +200,12 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
         this.block = () -> substituteSoilProperties.block.get();
     }
 
-    public int getFoliageTintLayerCount(){
-        return foliageTintLayerCount;
+    public void setFoliageTintIndex(int foliageTintIndex) {
+        this.foliageTintIndex = foliageTintIndex;
     }
 
-    public void setFoliageTintLayerCount(int primitiveBlockTintLayerCount) {
-        this.foliageTintLayerCount = primitiveBlockTintLayerCount;
+    public void setRootsTintIndex(int rootsTintIndex) {
+        this.rootsTintIndex = rootsTintIndex;
     }
 
     ///////////////////////////////////////////
@@ -255,30 +251,36 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
     // DATA GENERATION
     ///////////////////////////////////////////
 
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, SoilProperties>> soilStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("soil")
+            ));
+
     @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("soil"));
+    public void generateStateData(DTDataProvider.BlockState provider) {
+        // Generate soil state and model.
+        this.soilStateGenerator.get().generate(provider, this);
     }
 
-    protected HashMap<String, Identifier> textureOverrides = new HashMap<>();
-    protected HashMap<String, Identifier> modelOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> textureOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> modelOverrides = new HashMap<>();
     public static final String ROOTS = "roots";
     public static final String SOIL_BLOCK = "soil_block";
 
-    public void setTextureOverrides(Map<String, Identifier> textureOverrides) {
+    public void setTextureOverrides(Map<String, ResourceLocation> textureOverrides) {
         this.textureOverrides.putAll(textureOverrides);
     }
-    public Optional<Identifier> getTexturePath(String key) {
+    public Optional<ResourceLocation> getTexturePath(String key) {
         return Optional.ofNullable(textureOverrides.getOrDefault(key, null));
     }
-    public void setModelOverrides(Map<String, Identifier> modelOverrides) {
+    public void setModelOverrides(Map<String, ResourceLocation> modelOverrides) {
         this.modelOverrides.putAll(modelOverrides);
     }
-    public Optional<Identifier> getModelPath(String key) {
+    public Optional<ResourceLocation> getModelPath(String key) {
         return Optional.ofNullable(modelOverrides.getOrDefault(key, null));
     }
 
-    public Identifier getRootsOverlayModelLocation() {
+    public ResourceLocation getRootsOverlayModelLocation() {
         if (modelOverrides.containsKey(ROOTS)) return modelOverrides.get(ROOTS);
         return DynamicTrees.location("block/roots");
     }
@@ -294,14 +296,14 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
         this.onlyIfLoaded.add(onlyIfLoaded);
     }
 
-    public void addGeneratedBlockTags (Function<TagKey<Block>, TagAppender<Block, Block>> tagAppender){
+    public void addGeneratedBlockTags (Function<TagKey<Block>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tagAppender){
         // add rooty blocks to the rooty soil tag.
         getBlock().ifPresent(rootyBlock ->
                 defaultSoilBlockTags().forEach(tag -> {
                     if (!isOnlyIfLoaded()) {
                         tagAppender.apply(tag).add(rootyBlock);
                     } else {
-                        tagAppender.apply(tag).addOptional(rootyBlock);
+                        tagAppender.apply(tag).addOptional(BuiltInRegistries.BLOCK.getKey(rootyBlock));
                     }
                 }));
     }

@@ -3,7 +3,7 @@ package com.dtteam.dynamictrees.systems.genfeature;
 import com.dtteam.dynamictrees.api.configuration.ConfigurationProperty;
 import com.dtteam.dynamictrees.systems.genfeature.context.PostRotContext;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
@@ -22,7 +22,7 @@ public class MushroomRotGenFeature extends GenFeature {
     public static final ConfigurationProperty<Block> ALTERNATE_MUSHROOM = ConfigurationProperty.block("alternate_mushroom");
     public static final ConfigurationProperty<Float> ALTERNATE_MUSHROOM_CHANCE = ConfigurationProperty.floatProperty("alternate_mushroom_chance");
 
-    public MushroomRotGenFeature(final Identifier registryName) {
+    public MushroomRotGenFeature(final ResourceLocation registryName) {
         super(registryName);
     }
 
@@ -56,7 +56,7 @@ public class MushroomRotGenFeature extends GenFeature {
     }
 
     private boolean mayMushroomPlaceOn(final LevelAccessor level, final BlockPos pos) {
-        return level.getBlockState(pos).isSolidRender();
+        return level.getBlockState(pos).isSolidRender(level, pos);
     }
 
 }

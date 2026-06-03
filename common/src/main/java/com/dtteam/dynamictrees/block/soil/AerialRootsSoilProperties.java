@@ -4,28 +4,35 @@ import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.network.BranchDestructionData;
 import com.dtteam.dynamictrees.api.network.MapSignal;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
+import com.dtteam.dynamictrees.api.treedata.TreePart;
 import com.dtteam.dynamictrees.block.BlockWithDynamicHardness;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
 import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.data.tags.DTBlockTags;
 import com.dtteam.dynamictrees.entity.FallingTreeEntity;
-import com.dtteam.dynamictrees.entity.animation.FalloverAnimationHandler;
+import com.dtteam.dynamictrees.entity.animation.*;
 import com.dtteam.dynamictrees.systems.nodemapper.NetVolumeNode;
 import com.dtteam.dynamictrees.systems.nodemapper.RootIntegrityNode;
+import com.dtteam.dynamictrees.tree.ChunkTreeHelper;
 import com.dtteam.dynamictrees.tree.TreeHelper;
-import com.dtteam.dynamictrees.tree.family.AerialRootsFamily;
+import com.dtteam.dynamictrees.tree.family.UndergroundRootsFamily;
+import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.utility.EntityUtils;
 import com.dtteam.dynamictrees.utility.ItemUtils;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.level.*;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
@@ -49,27 +56,23 @@ public class AerialRootsSoilProperties extends SoilProperties {
 
     public static final TypedRegistry.EntryType<SoilProperties> TYPE = TypedRegistry.newType(AerialRootsSoilProperties::new);
 
-    protected AerialRootsFamily family;
-    public AerialRootsSoilProperties(final Identifier registryName) {
+    protected UndergroundRootsFamily family;
+    public AerialRootsSoilProperties(final ResourceLocation registryName) {
         super(registryName);
+        this.soilStateGenerator.reset(blockStateGenerators.get(DynamicTrees.location("aerial_root_soil")));
     }
 
-    @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("aerial_root_soil"));
-    }
-
-    public void setFamily(AerialRootsFamily family) {
+    public void setFamily(UndergroundRootsFamily family) {
         this.family = family;
     }
 
-    public AerialRootsFamily getFamily() {
+    public UndergroundRootsFamily getFamily() {
         return family;
     }
 
     @Override
     protected SoilBlock createBlock(BlockBehaviour.Properties blockProperties) {
-        return new RootSoilBlock(getBlockRegistryName(), this, blockProperties);
+        return new RootSoilBlock(this, blockProperties);
     }
 
     @Override
@@ -89,8 +92,8 @@ public class AerialRootsSoilProperties extends SoilProperties {
         public static final IntegerProperty RADIUS = IntegerProperty.create("radius", MIN_RADIUS, MAX_RADIUS);
         public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
 
-        public RootSoilBlock(Identifier id, SoilProperties properties, Properties blockProperties) {
-            super(id, properties, blockProperties);
+        public RootSoilBlock(SoilProperties properties, Properties blockProperties) {
+            super(properties, blockProperties);
             registerDefaultState(defaultBlockState().setValue(RADIUS, MAX_RADIUS).setValue(WATERLOGGED, false));
             soilBlockDecayer = (level, rootPos, rootyState, species) -> true;
         }
@@ -124,11 +127,11 @@ public class AerialRootsSoilProperties extends SoilProperties {
         }
 
         @Override
-        protected BlockState updateShape(BlockState state, LevelReader level, ScheduledTickAccess ticks, BlockPos pos, Direction directionToNeighbour, BlockPos neighbourPos, BlockState neighbourState, RandomSource random) {
-            if (state.getValue(WATERLOGGED)) {
-                ticks.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
+        public BlockState updateShape(BlockState stateIn, Direction facing, BlockState facingState, LevelAccessor level, BlockPos currentPos, BlockPos facingPos) {
+            if (stateIn.getValue(WATERLOGGED)) {
+                level.scheduleTick(currentPos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
             }
-            return super.updateShape(state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
+            return super.updateShape(stateIn, facing, facingState, level, currentPos, facingPos);
         }
 
         @Override
@@ -201,11 +204,11 @@ public class AerialRootsSoilProperties extends SoilProperties {
 
         @Override
         public void updateTree(BlockState rootyState, Level level, BlockPos rootPos, RandomSource random, boolean natural) {
-            int radOld = TreeHelper.getRadius(level, rootPos.offset(getTrunkDirection(level, rootPos).getUnitVec3i()));
+            int radOld = TreeHelper.getRadius(level, rootPos.offset(getTrunkDirection(level, rootPos).getNormal()));
 
             super.updateTree(rootyState, level, rootPos, random, natural);
 
-            int radNew = TreeHelper.getRadius(level, rootPos.offset(getTrunkDirection(level, rootPos).getUnitVec3i()));
+            int radNew = TreeHelper.getRadius(level, rootPos.offset(getTrunkDirection(level, rootPos).getNormal()));
             //If the radius was updated, tick the root block
             if (radOld != radNew) level.scheduleTick(rootPos, this, 1);
         }
@@ -233,7 +236,7 @@ public class AerialRootsSoilProperties extends SoilProperties {
 
         @Override
         public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
-            if (!level.isClientSide())
+            if (!level.isClientSide)
                 this.dropWholeTree(level, pos, player, FallingTreeEntity.DestroyType.HARVEST);
             return level.isClientSide() ? level.setBlock(pos, fluid.createLegacyBlock(), 11) : level.removeBlock(pos, false);
         }
@@ -302,8 +305,5 @@ public class AerialRootsSoilProperties extends SoilProperties {
         return defaultTags;
     }
 
-    public Identifier getSoilLoader(){
-        return DynamicTrees.location("aerial_roots_soil");
-    }
 
 }

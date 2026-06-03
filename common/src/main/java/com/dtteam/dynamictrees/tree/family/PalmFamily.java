@@ -1,21 +1,21 @@
 package com.dtteam.dynamictrees.tree.family;
 
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
+import com.dtteam.dynamictrees.block.branch.BasicBranchBlock;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
 import com.dtteam.dynamictrees.block.branch.PalmBranchBlock;
 import com.dtteam.dynamictrees.block.leaves.LeavesProperties;
 import com.dtteam.dynamictrees.block.leaves.PalmLeavesProperties;
 import com.dtteam.dynamictrees.tree.species.PalmSpecies;
 import com.dtteam.dynamictrees.tree.species.Species;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.resources.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 
 public class PalmFamily extends Family {
 
     public static final TypedRegistry.EntryType<Family> TYPE = TypedRegistry.newType(PalmFamily::new);
 
-    public PalmFamily(Identifier name) {
+    public PalmFamily(ResourceLocation name) {
         super(name);
     }
 
@@ -36,7 +36,10 @@ public class PalmFamily extends Family {
     }
 
     @Override
-    protected BranchBlock createBranch(Identifier name, BlockBehaviour.Properties properties) {
-        return new PalmBranchBlock(name, properties);
+    protected BranchBlock createBranchBlock(ResourceLocation name) {
+        final BasicBranchBlock branch = new PalmBranchBlock(name, this.getProperties());
+        if (this.isFireProof())
+            branch.setFireSpreadSpeed(0).setFlammability(0);
+        return branch;
     }
 }

@@ -1,12 +1,12 @@
 package com.dtteam.dynamictrees.treepack;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.resources.Identifier;
+import net.minecraft.FileUtil;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.resources.IoSupplier;
-import net.minecraft.util.FileUtil;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -33,11 +33,11 @@ public class TreePackResources extends PathPackResources implements com.dtteam.d
     }
 
     @Override
-    public IoSupplier<InputStream> getResource(PackType packType, Identifier location) {
+    public IoSupplier<InputStream> getResource(PackType packType, ResourceLocation location) {
         return this.getRootResource(getPathFromLocation(location));
     }
 
-    private static String[] getPathFromLocation(Identifier location) {
+    private static String[] getPathFromLocation(ResourceLocation location) {
         String[] parts = location.getPath().split("/");
         String[] result = new String[parts.length + 1];
         result[0] = location.getNamespace();
@@ -48,7 +48,7 @@ public class TreePackResources extends PathPackResources implements com.dtteam.d
     @Override
     public void listResources(@Nullable PackType packType, String namespace, String path, ResourceOutput resourceOutput) {
         FileUtil.decomposePath(path)
-                .ifSuccess(parts -> PathPackResources.listPath(namespace, this.root.resolve(namespace).toAbsolutePath(), parts, resourceOutput))
+                .ifSuccess(parts -> net.minecraft.server.packs.PathPackResources.listPath(namespace, this.root.resolve(namespace).toAbsolutePath(), parts, resourceOutput))
                 .ifError(dataResult -> LOGGER.error("Invalid path {}: {}", path, dataResult.message()));
     }
 
@@ -61,7 +61,7 @@ public class TreePackResources extends PathPackResources implements com.dtteam.d
                         .map(this.root::relativize)
                         .filter(p -> p.getNameCount() > 0) // Skip the root entry
                         .map(p -> p.toString().replaceAll("/$", "")) // Remove the trailing slash, if present
-                        .filter(s -> !s.isEmpty()) // Filter empty strings, otherwise empty strings default to minecraft namespace in Identifiers
+                        .filter(s -> !s.isEmpty()) // Filter empty strings, otherwise empty strings default to minecraft namespace in ResourceLocations
                         .collect(Collectors.toSet());
             }
         } catch (IOException | AssertionError e) {

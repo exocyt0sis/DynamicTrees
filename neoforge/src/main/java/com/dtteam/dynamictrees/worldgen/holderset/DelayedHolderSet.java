@@ -17,13 +17,6 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class DelayedHolderSet<T> implements HolderSet<T> {
-
-    //TODO: ???
-    @Override
-    public boolean isBound() {
-        return true;
-    }
-
     private final Supplier<HolderSet<T>> holderSetSupplier;
 
     public DelayedHolderSet(Supplier<HolderSet<T>> holderSetSupplier)

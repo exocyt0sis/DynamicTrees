@@ -60,7 +60,7 @@ public class PhysicsAnimationHandler implements AnimationHandler {
 
         //playStartSound(entity);
 
-        final long seed = entity.level().getRandom().nextLong();
+        final long seed = entity.level().random.nextLong();
         final RandomSource random = RandomSource.create(seed ^ (((long) cutPos.getX()) << 32 | ((long) cutPos.getZ())));
         final float mass = entity.getDestroyData().woodVolume.getVolume();
         final float inertialMass = Mth.clamp(mass, 1, 3);
@@ -153,7 +153,7 @@ public class PhysicsAnimationHandler implements AnimationHandler {
     public void dropPayload(FallingTreeEntity entity) {
         final Level level = entity.level();
         entity.getPayload().forEach(i -> Block.popResource(level, BlockPos.containing(entity.getX(), entity.getY(), entity.getZ()), i));
-        entity.getDestroyData().leavesDrops.forEach(bis -> Block.popResource(level, entity.getDestroyData().cutPos.offset(bis.pos()), bis.stack()));
+        entity.getDestroyData().leavesDrops.forEach(bis -> Block.popResource(level, entity.getDestroyData().cutPos.offset(bis.pos), bis.stack));
     }
 
     public boolean shouldDie(FallingTreeEntity entity) {

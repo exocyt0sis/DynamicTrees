@@ -18,9 +18,11 @@ public class NeoForgeInteractionHelper implements IInteractionHelper {
         return stack.canPerformAction(ItemAbilities.AXE_STRIP);
     }
 
-    /**
-     * TODO: this can be done better now
-     */
+    @Override
+    public boolean canToolAxeDig(ItemStack stack) {
+        return stack.canPerformAction(ItemAbilities.AXE_DIG);
+    }
+
     @Override
     public int setSeedItemEntityLifespan(ItemEntity entityItem, Seed seed) {
         if (entityItem.lifespan == 6000) { // 6000 (5 minutes) is the default lifespan for an entity item
@@ -34,7 +36,7 @@ public class NeoForgeInteractionHelper implements IInteractionHelper {
 
     @Override
     public boolean blockDestroyByPlayer (BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluidState){
-        return state.onDestroyedByPlayer(level, pos, player, player.getMainHandItem(), willHarvest, fluidState);
+        return state.onDestroyedByPlayer(level, pos, player, willHarvest, fluidState);
     }
 
 }

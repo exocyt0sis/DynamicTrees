@@ -14,7 +14,7 @@ import net.minecraft.data.worldgen.BootstrapContext;
 import net.minecraft.data.worldgen.features.NetherFeatures;
 import net.minecraft.data.worldgen.placement.PlacementUtils;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.util.random.WeightedList;
+import net.minecraft.util.random.SimpleWeightedRandomList;
 import net.minecraft.util.valueproviders.ConstantInt;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -43,10 +43,24 @@ public class DTDatapackBuiltinEntriesProvider extends DatapackBuiltinEntriesProv
         super(output, registries.thenApply(p -> constructRegistries(p, getBuilder(p))), modIds);
     }
 
+    @SuppressWarnings({"unchecked", "UnstableApiUsage"})
     private static RegistrySetBuilder.PatchedRegistries constructRegistries(HolderLookup.Provider original, RegistrySetBuilder datapackEntriesBuilder) {
-        return datapackEntriesBuilder.buildPatch(
-                RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY),
-                original, new Cloner.Factory());
+        try {
+//            // We don't need SRG mappings; this is for in-dev datagen only
+//            Field ownerField = ObfuscationReflectionHelper.findField(Holder.Reference.class, "owner");
+//            Object holderOwner = ownerField.get(original.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.BADLANDS));
+//            Class<?> universalOwnerClass = Class.forName("net.minecraft.core.RegistrySetBuilder$UniversalOwner");
+//            Field ownersField = ObfuscationReflectionHelper.findField(universalOwnerClass, "owners");
+//            Set<HolderOwner<?>> owners = (Set<HolderOwner<?>>) ownersField.get(holderOwner);
+//            var builderKeys = new HashSet<>(datapackEntriesBuilder.getEntryKeys());
+//            DataPackRegistriesHooks.getDataPackRegistriesWithDimensions().filter(data -> !builderKeys.contains(data.key())).forEach(data -> datapackEntriesBuilder.add(data.key(), context -> {}));
+            RegistrySetBuilder.PatchedRegistries provider = datapackEntriesBuilder.buildPatch(RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY), original, new Cloner.Factory()); //Where to get the cloner factory?
+//            Object newHolderOwner = ownerField.get(provider.full().lookupOrThrow(Registries.CONFIGURED_FEATURE).getOrThrow(DTRegistries.DYNAMIC_TREE_CONFIGURED_FEATURE));
+//            owners.addAll((Set<HolderOwner<?>>) ownersField.get(newHolderOwner));
+            return provider;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static RegistrySetBuilder getBuilder(HolderLookup.Provider vanillaProvider) {
@@ -105,17 +119,17 @@ public class DTDatapackBuiltinEntriesProvider extends DatapackBuiltinEntriesProv
     }
 
     private static BlockStateProvider replaceBlockStates(WeightedStateProvider stateProvider, Block crimsonSapling, Block warpedSapling) {
-        WeightedList.Builder<BlockState> listBuilder = WeightedList.builder();
+        var listBuilder = SimpleWeightedRandomList.<BlockState>builder();
 
         for (var entry : stateProvider.weightedList.unwrap()) {
-            BlockState blockState = entry.value();
+            BlockState blockState = entry.data();
             if (blockState.is(Blocks.CRIMSON_FUNGUS)) {
                 blockState = crimsonSapling.defaultBlockState();
             } else if (blockState.is(Blocks.WARPED_FUNGUS)) {
                 blockState = warpedSapling.defaultBlockState();
             }
 
-            listBuilder.add(blockState, entry.weight());
+            listBuilder.add(blockState, entry.getWeight().asInt());
         }
 
         return new DTReplaceNyliumFungiBlockStateProvider(new WeightedStateProvider(listBuilder), stateProvider);

@@ -8,7 +8,7 @@ import com.dtteam.dynamictrees.worldgen.BiomeDatabase;
 import com.dtteam.dynamictrees.worldgen.BiomeDatabases;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.levelgen.feature.FeaturePlaceContext;
@@ -24,7 +24,7 @@ public class CaveRootedTreeFeature extends DynamicTreeFeature {
     @Override
     public boolean place(FeaturePlaceContext<NoneFeatureConfiguration> context) {
         WorldGenLevel level = context.level();
-        Identifier dimensionName = level.getLevel().dimension().identifier();
+        ResourceLocation dimensionName = level.getLevel().dimension().location();
 
         // Do not generate if the current dimension is blacklisted.
         if (BiomeDatabases.isBlacklisted(dimensionName)) {
@@ -32,7 +32,7 @@ public class CaveRootedTreeFeature extends DynamicTreeFeature {
         }
 
         BlockPos originPos = context.origin();
-        ChunkPos chunkPos = ChunkPos.containing(originPos);
+        ChunkPos chunkPos = new ChunkPos(originPos);
         LevelContext levelContext = LevelContext.create(level);
 
         PoissonDisc disc = getDisc(levelContext, chunkPos, originPos).orElse(null);

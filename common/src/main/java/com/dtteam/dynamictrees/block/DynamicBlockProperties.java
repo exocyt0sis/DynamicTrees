@@ -1,7 +1,7 @@
 package com.dtteam.dynamictrees.block;
 
 import com.google.common.collect.Maps;
-import net.minecraft.util.Util;
+import net.minecraft.Util;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import oshi.util.tuples.Pair;
@@ -15,6 +15,8 @@ public final class DynamicBlockProperties {
 
     private DynamicBlockProperties() {
     }
+
+
 
     /**
      * A map of maximum ages to their respective age {@link IntegerProperty property}.

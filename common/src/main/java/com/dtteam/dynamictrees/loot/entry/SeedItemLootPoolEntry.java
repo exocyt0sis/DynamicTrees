@@ -38,10 +38,7 @@ public final class SeedItemLootPoolEntry extends LootPoolSingletonContainer {
     @Override
     protected void createItemStack(Consumer<ItemStack> stackConsumer, LootContext context) {
         final Species species = context.getParamOrNull(DTLootContextParams.SPECIES);
-        if (species == null) {
-            stackConsumer.accept(ItemStack.EMPTY);
-            return;
-        }
+        assert species != null;
         stackConsumer.accept(species.shouldDropSeeds() ? species.getSeedStack(1) : ItemStack.EMPTY);
     }
 

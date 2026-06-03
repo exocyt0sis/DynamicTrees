@@ -18,11 +18,11 @@ import com.dtteam.dynamictrees.systems.SeedSaplingRecipe;
 import com.dtteam.dynamictrees.systems.genfeature.GenFeatureConfiguration;
 import com.dtteam.dynamictrees.systems.growthlogic.GrowthLogicKitConfiguration;
 import com.dtteam.dynamictrees.tree.species.Species;
-import com.dtteam.dynamictrees.tree.species.AerialRootsSpecies;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.tree.species.UndergroundRootsSpecies;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.google.gson.JsonObject;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
@@ -68,7 +68,7 @@ public final class SpeciesResourceLoader extends JsonRegistryResourceLoader<Spec
         );
 
         this.loadAppliers
-                .register("seed", Identifier.class, this::setSeed)
+                .register("seed", ResourceLocation.class, this::setSeed)
                 .register("generate_seed", Boolean.class, Species::setShouldGenerateSeed)
                 .register("generate_sapling", Boolean.class, Species::setShouldGenerateSapling)
                 .register("sapling_name", String.class, Species::setSaplingName)
@@ -85,8 +85,8 @@ public final class SpeciesResourceLoader extends JsonRegistryResourceLoader<Spec
                 .register("sapling_shape", VoxelShape.class, Species::setSaplingShape)
                 .register("only_if_loaded", String.class, Species::setOnlyIfLoaded)
                 .registerArrayApplier("only_if_loaded", String.class, Species::setOnlyIfLoaded)
-                .registerMapApplier("model_overrides", Identifier.class, Species::setModelOverrides)
-                .registerMapApplier("texture_overrides", Identifier.class, Species::setTextureOverrides)
+                .registerMapApplier("model_overrides", ResourceLocation.class, Species::setModelOverrides)
+                .registerMapApplier("texture_overrides", ResourceLocation.class, Species::setTextureOverrides)
                 .registerMapApplier("lang_overrides", String.class, Species::setLangOverrides);
 
         this.reloadAppliers
@@ -100,7 +100,7 @@ public final class SpeciesResourceLoader extends JsonRegistryResourceLoader<Spec
                 .register("growth_logic_kit", GrowthLogicKitConfiguration.class, Species::setGrowthLogicKit)
                 .register("leaves_properties", LeavesProperties.class, Species::setLeavesProperties)
                 .register("world_gen_leaf_map_height", Integer.class, Species::setWorldGenLeafMapHeight)
-                .register("mega_species", Identifier.class, this::setMegaSpecies)
+                .register("mega_species", ResourceLocation.class, this::setMegaSpecies)
                 .register("can_craft_mega_seed", Boolean.class, Species::setCanCraftMegaSeed)
                 .register("seed", Seed.class, (species, seed) -> species.setSeed(() -> seed))
                 .register("seed_composter_chance", Float.class, this.composterChanceCache::put)
@@ -146,20 +146,21 @@ public final class SpeciesResourceLoader extends JsonRegistryResourceLoader<Spec
 
     private void registerMangroveAppliers(){
         this.reloadAppliers
-                .register("min_world_gen_height_offset", AerialRootsSpecies.class, Integer.class, AerialRootsSpecies::setMinWorldGenHeightOffset)
-                .register("max_world_gen_height_offset", AerialRootsSpecies.class, Integer.class, AerialRootsSpecies::setMaxWorldGenHeightOffset)
-                .register("roots_growth_logic_kit", AerialRootsSpecies.class, GrowthLogicKitConfiguration.class, AerialRootsSpecies::setRootsGrowthLogicKit)
-                .register("root_growth_multiplier", AerialRootsSpecies.class, Integer.class, AerialRootsSpecies::setRootGrowthMultiplier)
-                .register("root_tapering", AerialRootsSpecies.class, Float.class, AerialRootsSpecies::setRootTapering)
-                .register("update_soil_on_water_radius", AerialRootsSpecies.class, Integer.class, AerialRootsSpecies::setUpdateSoilOnWaterRadius);
+                .register("min_world_gen_height_offset", UndergroundRootsSpecies.class, Integer.class, UndergroundRootsSpecies::setMinWorldGenHeightOffset)
+                .register("max_world_gen_height_offset", UndergroundRootsSpecies.class, Integer.class, UndergroundRootsSpecies::setMaxWorldGenHeightOffset)
+                .register("roots_growth_logic_kit", UndergroundRootsSpecies.class, GrowthLogicKitConfiguration.class, UndergroundRootsSpecies::setRootsGrowthLogicKit)
+                .register("root_growth_multiplier", UndergroundRootsSpecies.class, Integer.class, UndergroundRootsSpecies::setRootGrowthMultiplier)
+                .register("root_tapering", UndergroundRootsSpecies.class, Float.class, UndergroundRootsSpecies::setRootTapering)
+                .register("root_signal_energy", UndergroundRootsSpecies.class, Float.class, UndergroundRootsSpecies::setRootSignalEnergy)
+                .register("update_soil_on_water_radius", UndergroundRootsSpecies.class, Integer.class, UndergroundRootsSpecies::setUpdateSoilOnWaterRadius);
     }
 
-    private void setSeed(Species species, Identifier seedName) {
-        final Identifier processedSeedName = IdentifierUtils.parseDTLocation(seedName);
+    private void setSeed(Species species, ResourceLocation seedName) {
+        final ResourceLocation processedSeedName = ResourceLocationUtils.parseDTLocation(seedName);
         species.setShouldGenerateSeed(false);
         species.setShouldGenerateSapling(false);
         DynamicTrees.runOnCommonSetup(() -> {
-            final Item seed = BuiltInRegistries.ITEM.get(processedSeedName).get().value();
+            final Item seed = BuiltInRegistries.ITEM.get(processedSeedName);
             if (seed instanceof Seed) {
                 species.setSeed(() -> (Seed) seed);
             } else {
@@ -178,8 +179,8 @@ public final class SpeciesResourceLoader extends JsonRegistryResourceLoader<Spec
                 );
     }
 
-    private void setMegaSpecies(Species species, Identifier registryName) {
-        final Identifier processedRegName = IdentifierUtils.parseDTLocation(registryName);
+    private void setMegaSpecies(Species species, ResourceLocation registryName) {
+        final ResourceLocation processedRegName = ResourceLocationUtils.parseDTLocation(registryName);
         Species.REGISTRY.runOnNextLock(Species.REGISTRY.generateIfValidRunnable(processedRegName, species::setMegaSpecies, () -> LOGGER.warn("Could not set mega species for '{}' as Species '{}' was not found.", species, processedRegName)));
     }
 

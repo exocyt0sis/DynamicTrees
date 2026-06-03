@@ -25,7 +25,8 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
 
     @Override
     public boolean isDevelopmentEnvironment() {
-        return !FMLLoader.getCurrent().isProduction();
+
+        return !FMLLoader.isProduction();
     }
 
     public List<ModFileContainer> getMods(){

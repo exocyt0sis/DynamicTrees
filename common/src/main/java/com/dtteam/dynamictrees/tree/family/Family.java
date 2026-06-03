@@ -1,46 +1,48 @@
 package com.dtteam.dynamictrees.tree.family;
 
 import com.dtteam.dynamictrees.DynamicTrees;
+import com.dtteam.dynamictrees.api.lazyvalue.MutableLazyValue;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.RegistryHandler;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
 import com.dtteam.dynamictrees.api.voxmap.BlockPosBounds;
-import com.dtteam.dynamictrees.block.branch.*;
+import com.dtteam.dynamictrees.block.branch.BasicBranchBlock;
+import com.dtteam.dynamictrees.block.branch.BranchBlock;
+import com.dtteam.dynamictrees.block.branch.SurfaceRootBlock;
+import com.dtteam.dynamictrees.block.branch.ThickBranchBlock;
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import com.dtteam.dynamictrees.block.leaves.LeavesProperties;
 import com.dtteam.dynamictrees.compat.WailaHelper;
 import com.dtteam.dynamictrees.config.DTConfigs;
+import com.dtteam.dynamictrees.data.DTDataProvider;
+import com.dtteam.dynamictrees.data.Generator;
 import com.dtteam.dynamictrees.data.tags.DTBlockTags;
 import com.dtteam.dynamictrees.data.tags.DTItemTags;
 import com.dtteam.dynamictrees.entity.FallingTreeEntity;
 import com.dtteam.dynamictrees.entity.animation.AnimationHandler;
+import com.dtteam.dynamictrees.platform.services.IConfigHelper;
 import com.dtteam.dynamictrees.systems.cell.MetadataCell;
-import com.dtteam.dynamictrees.tree.BranchEntry;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.treepack.Resettable;
 import com.dtteam.dynamictrees.utility.Optionals;
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.DataResult;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.data.tags.TagAppender;
-import net.minecraft.resources.Identifier;
+import net.minecraft.data.tags.IntrinsicHolderTagsProvider;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.ToolMaterial;
+import net.minecraft.world.item.*;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -54,10 +56,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
-import static com.dtteam.dynamictrees.utility.IdentifierUtils.suffix;
-import static com.dtteam.dynamictrees.utility.IdentifierUtils.surround;
+import static com.dtteam.dynamictrees.utility.ResourceLocationUtils.*;
 
 /**
  * This structure describes a Family whose member Species all have a common branch.
@@ -75,7 +75,9 @@ import static com.dtteam.dynamictrees.utility.IdentifierUtils.surround;
  */
 public class Family extends RegistryEntry<Family> implements Resettable<Family> {
 
-    public static final Codec<Family> CODEC = Identifier.CODEC.comapFlatMap(Family::read, Family::getRegistryName);
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.BlockState, Family>>> blockStateGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.ItemModel, Family>>> itemModelGenerators = new HashMap<>();
+    public static final HashMap<ResourceLocation, Supplier<Generator<DTDataProvider.Language, Family>>> languageGenerators = new HashMap<>();
 
     public static final TypedRegistry.EntryType<Family> TYPE = TypedRegistry.newType(Family::new);
 
@@ -95,8 +97,13 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         }
 
         @Override
-        public ItemStack getStickStack(int qty) {
+        public ItemStack getStick(int qty) {
             return ItemStack.EMPTY;
+        }
+
+        @Override
+        public BranchBlock getValidBranchBlock(int index) {
+            return null;
         }
 
         @Override
@@ -111,15 +118,18 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
     public static final TypedRegistry<Family> REGISTRY = new TypedRegistry<>(Family.class, NULL_FAMILY, TYPE);
 
     protected Species commonSpecies;
+
     protected LeavesProperties commonLeaves = LeavesProperties.NULL;
 
     //Branches
-    protected List<BranchEntry> branches = new ArrayList<>();
-    public static final int BRANCH_INDEX = 0;
-    public static final int STRIPPED_BRANCH_INDEX = 1;
-
-    protected BlockBehaviour.Properties branchProperties;
-
+    /**
+     * The dynamic branch used by this tree family
+     */
+    private Supplier<BranchBlock> branch;
+    /**
+     * The stripped variant of the branch used by this tree family
+     */
+    private Supplier<BranchBlock> strippedBranch;
     protected boolean hasStrippedBranch = true;
     /**
      * The minimum radius that the branch needs to have to be stripped by an axe
@@ -131,12 +141,28 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      * This parameter is ignored if the value of {@link DTConfigs#enableStripRadiusReduction} is set to FALSE.
      */
     protected boolean reduceRadiusWhenStripping = true;
-
+    /**
+     * The dynamic branch's block item
+     */
+    private Supplier<Item> branchItem;
     /**
      * The surface root used by this tree family
      */
     private Supplier<SurfaceRootBlock> surfaceRoot;
     protected boolean hasSurfaceRoot = false;
+    /**
+     * The primitive (vanilla) log to base the texture, drops, and other behavior from
+     */
+    private Block primitiveLog = Blocks.AIR;
+    /**
+     * The primitive stripped log to base the texture, drops, and other behavior from
+     */
+    private Block primitiveStrippedLog = Blocks.AIR;
+
+    /**
+     * A list of branches the tree accepts as its own. Used for the falling tree renderer
+     */
+    private final List<BranchBlock> validBranches = new LinkedList<>();
 
     /**
      * The maximum radius of a {@link BranchBlock} belonging to this family. {@link Species#getMaxBranchRadius()} will be
@@ -152,12 +178,10 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
 
     protected float lootVolumeMultiplier = 1.0f;
 
+//    
     public int woodRingColor; // For rooty blocks
-
+//    
     public int woodBarkColor; // For rooty water
-
-    private boolean branchIsLadder = true;
-    private int maxSignalDepth = 32;
 
     /**
      * A list of child species, added to when tree family is set for species.
@@ -171,53 +195,24 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
     /**
      * Constructor suitable for derivative mods
      *
-     * @param name The Identifier of the tree e.g. "mymod:poplar"
+     * @param name The ResourceLocation of the tree e.g. "mymod:poplar"
      */
-    public Family(Identifier name) {
+    public Family(ResourceLocation name) {
         this.setRegistryName(name);
         this.commonSpecies = Species.NULL_SPECIES;
     }
 
-    private static DataResult<Family> read(Identifier name) {
-        final Family family = Family.REGISTRY.get(name);
-        return family == null ? DataResult.error(() -> "Family not found: " + name) : DataResult.success(family);
-    }
-
-    @Override
-    public final Class<Family> getRegistryType() {
-        return REGISTRY.getType();
-    }
-
-    protected void addBranch(int index, BranchEntry entry){
-        if (index < branches.size()){
-            DynamicTrees.LOG.error("Family {} already contains a branch at index {}", this.getRegistryName(), index);
-        } else {
-            branches.add(index, entry);
-        }
-    }
-
     public void setupBlocks() {
-        addBranch(BRANCH_INDEX, new BranchEntry(this, getBranchName(""))
-                .setCanBeStripped(hasStrippedBranch)
-                .CreateBlock(this::createBranch)
-                .CreateItem());
+        this.setBranch(this.createBranch(this.getBranchName()));
+        this.setBranchItem(this.createBranchItem(this.getBranchName(), this.branch));
 
-        if (hasStrippedBranch()) {
-            addBranch(STRIPPED_BRANCH_INDEX, new BranchEntry(this, getBranchName("stripped_"))
-                    .CreateBlock(this::createBranch));
+        if (this.hasStrippedBranch()) {
+            this.setStrippedBranch(this.createBranch(this.getBranchName("stripped_")));
         }
 
         if (this.hasSurfaceRoot()) {
             this.setSurfaceRoot(this.createSurfaceRoot());
         }
-    }
-
-    protected BranchBlock createBranch(Identifier name, BlockBehaviour.Properties properties) {
-        return isThick() ? new ThickBranchBlock(name, properties) : new BasicBranchBlock(name, properties);
-    }
-
-    protected Identifier getBranchName(final String prefix) {
-        return this.getRegistryName().withPrefix(prefix).withSuffix(BranchBlock.NAME_SUFFIX);
     }
 
     public void setCommonSpecies(final Species species) {
@@ -290,12 +285,14 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
     }
 
     public boolean stripBranch(BlockState state, Level level, BlockPos pos, Player player, ItemStack heldItem) {
-        if (this.hasStrippedBranch() && state.getBlock() instanceof BranchBlock branch) {
-            branch.stripBranchAndDamageAxe(state, level, pos, player, heldItem);
-            if (level.isClientSide()) {
-                level.playSound(player, pos, SoundEvents.AXE_STRIP, SoundSource.BLOCKS, 1.0F, 1.0F);
-                WailaHelper.invalidateWailaPosition();
-            }
+        if (this.hasStrippedBranch()) {
+            this.getBranch().ifPresent(branch -> {
+                branch.stripBranch(state, level, pos, player, heldItem);
+                if (level.isClientSide) {
+                    level.playSound(player, pos, SoundEvents.AXE_STRIP, SoundSource.BLOCKS, 1.0F, 1.0F);
+                    WailaHelper.invalidateWailaPosition();
+                }
+            });
             return this.getBranch().isPresent();
         } else {
             return false;
@@ -310,23 +307,82 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return true;
     }
 
-    protected Optional<BranchBlock> getBranchBlock(int index) {
-        return Optionals.ofBlock(branches.get(index).getBlock());
+    protected ResourceLocation getBranchName() {
+        return getBranchName("");
     }
-    protected Optional<Item> getBranchItem(int index) {
-        return branches.get(index).getItem();
+
+    protected ResourceLocation getBranchName(final String prefix) {
+        return prefix(this.getRegistryName(), prefix);
+    }
+
+    protected String getBranchNameSuffix() {
+        return BranchBlock.NAME_SUFFIX;
+    }
+
+    /**
+     * Instantiates and sets up the actual {@link BranchBlock} object. Can be overridden by sub-classes for custom
+     * branch blocks.
+     *
+     * @return The instantiated {@link BranchBlock}.
+     */
+    protected BranchBlock createBranchBlock(ResourceLocation name) {
+        final BasicBranchBlock branch = this.isThick() ? new ThickBranchBlock(name, this.getProperties()) :
+                new BasicBranchBlock(name, this.getProperties());
+        if (this.isFireProof()) {
+            branch.setFireSpreadSpeed(0).setFlammability(0);
+        }
+        return branch;
+    }
+
+    /**
+     * Creates branch block and adds it to the relevant {@link RegistryHandler}.
+     *
+     * @param name The {@link ResourceLocation} registry name.
+     * @return The created {@link BranchBlock}.
+     */
+    protected Supplier<BranchBlock> createBranch(final ResourceLocation name) {
+        return RegistryHandler.addBlock(suffix(name, getBranchNameSuffix()), () -> createBranchBlock(name));
+    }
+
+    /**
+     * Creates and registers a {@link BlockItem} for the given branch with the given registry name.
+     *
+     * @param registryName The {@link ResourceLocation} registry name for the item.
+     * @param branchSup    A supplier for the {@link BranchBlock} to create the {@link BlockItem} for.
+     * @return A supplier for the {@link BlockItem}.
+     */
+    public Supplier<BlockItem> createBranchItem(final ResourceLocation registryName, final Supplier<BranchBlock> branchSup) {
+        return RegistryHandler.addItem(suffix(registryName, getBranchNameSuffix()), () -> new BlockItem(branchSup.get(), new Item.Properties()));
+    }
+
+    protected Family setBranch(final Supplier<BranchBlock> branchSup) {
+        this.branch = this.setupBranch(branchSup, this.hasStrippedBranch);
+        return this;
+    }
+
+    protected Family setStrippedBranch(final Supplier<BranchBlock> branch) {
+        this.strippedBranch = this.setupBranch(branch, false);
+        return this;
+    }
+
+    protected Supplier<BranchBlock> setupBranch(final Supplier<BranchBlock> branchBlockSup, final boolean canBeStripped) {
+        return () -> {
+            BranchBlock branchBlock = branchBlockSup.get();
+            branchBlock.setFamily(this); // Link the branch to the tree.
+            branchBlock.setCanBeStripped(canBeStripped);
+            this.addValidBranches(branchBlock); // Add the branch as a valid branch.
+            return branchBlock;
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T extends Item> Family setBranchItem(Supplier<T> branchItemSup) {
+        this.branchItem = (Supplier<Item>) branchItemSup;
+        return this;
     }
 
     public Optional<BranchBlock> getBranch() {
-        return getBranchBlock(BRANCH_INDEX);
-    }
-
-    public Optional<BranchBlock> getStrippedBranch() {
-        return getBranchBlock(STRIPPED_BRANCH_INDEX);
-    }
-
-    public Optional<Item> getBranchItem() {
-        return getBranchItem(BRANCH_INDEX);
+        return Optionals.ofBlock(this.branch);
     }
 
     /**
@@ -354,6 +410,14 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      */
     public Optional<BranchBlock> getBranchForRootsPlacement(LevelAccessor level, Species species, BlockPos pos) {
         return getBranch();
+    }
+
+    public Optional<BranchBlock> getStrippedBranch() {
+        return Optionals.ofBlock(this.strippedBranch);
+    }
+
+    public Optional<Item> getBranchItem() {
+        return Optionals.ofItem(this.branchItem);
     }
 
     public boolean isThick() {
@@ -390,12 +454,8 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      * @param qty Number of sticks
      * @return an {@link ItemStack} of sticky things
      */
-    public ItemStack getStickStack(int qty) {
+    public ItemStack getStick(int qty) {
         return this.stick == Items.AIR ? ItemStack.EMPTY : new ItemStack(this.stick, Mth.clamp(qty, 0, 64));
-    }
-
-    public Item getStick() {
-        return stick;
     }
 
     /**
@@ -406,12 +466,22 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      * @return {@link Family} for chaining calls
      */
     public Family setPrimitiveLog(Block primitiveLog) {
-        branches.get(BRANCH_INDEX).setPrimitiveBlock(primitiveLog);
+        this.primitiveLog = primitiveLog;
+
+        if (this.branch != null) {
+            this.branch.get().setPrimitiveLogDrops(new ItemStack(primitiveLog));
+        }
+
         return this;
     }
 
     public Family setPrimitiveStrippedLog(Block primitiveStrippedLog) {
-        branches.get(STRIPPED_BRANCH_INDEX).setPrimitiveBlock(primitiveStrippedLog);
+        this.primitiveStrippedLog = primitiveStrippedLog;
+
+        if (this.strippedBranch != null) {
+            this.strippedBranch.get().setPrimitiveLogDrops(new ItemStack(primitiveStrippedLog));
+        }
+
         return this;
     }
 
@@ -421,15 +491,12 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      *
      * @return Block of the primitive log.
      */
-    public Optional<Block> getPrimitiveLog(int index) {
-        return branches.get(index).getPrimitiveBlock();
-    }
     public Optional<Block> getPrimitiveLog() {
-        return getPrimitiveLog(BRANCH_INDEX);
+        return Optionals.ofBlock(primitiveLog);
     }
 
     public Optional<Block> getPrimitiveStrippedLog() {
-        return getPrimitiveLog(STRIPPED_BRANCH_INDEX);
+        return Optionals.ofBlock(primitiveStrippedLog);
     }
 
     public List<ItemStack> getLogDropsForBranch(float volume, int branch) {
@@ -455,7 +522,7 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      * {@code null} = can harvest with hand
      */
     @Nullable
-    public ToolMaterial getDefaultBranchHarvestTier() {
+    public Tier getDefaultBranchHarvestTier() {
         return null;
     }
 
@@ -463,7 +530,7 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
      * {@code null} = can harvest with hand
      */
     @Nullable
-    public ToolMaterial getDefaultStrippedBranchHarvestTier() {
+    public Tier getDefaultStrippedBranchHarvestTier() {
         return null;
     }
 
@@ -477,7 +544,7 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return SoundType.WOOD;
     }
 
-    public BlockBehaviour.Properties defaultBranchProperties() {
+    public BlockBehaviour.Properties getDefaultBranchProperties() {
         BlockBehaviour.Properties properties = BlockBehaviour.Properties.of()
                 .sound(SoundType.WOOD)
                 .mapColor(MapColor.WOOD)
@@ -488,13 +555,21 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return properties;
     }
 
-    public void setBranchBlockProperties(BlockBehaviour.Properties properties) {
-        this.branchProperties = properties;
+    private BlockBehaviour.Properties properties;
+
+    /**
+     * Gets the {@link #properties} for this {@link Family} object.
+     *
+     * @return The {@link #properties} for this {@link Family} object.
+     */
+    public BlockBehaviour.Properties getProperties() {
+        return this.properties == null ? this.getDefaultBranchProperties() : this.properties;
     }
 
-    public BlockBehaviour.Properties getBranchProperties() {
-        if (branchProperties == null) return defaultBranchProperties();
-        return branchProperties;
+
+    public Family setProperties(BlockBehaviour.Properties properties) {
+        this.properties = properties;
+        return this;
     }
 
     public float getLootVolumeMultiplier() {
@@ -573,11 +648,12 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         this.reduceRadiusWhenStripping = reduceRadiusWhenStripping;
     }
 
+    public void addValidBranches(BranchBlock... branches) {
+        this.validBranches.addAll(Arrays.asList(branches));
+    }
+
     public int getBranchBlockIndex(BranchBlock block) {
-        int index = IntStream.range(0, branches.size())
-                .filter(i -> branches.get(i).getBlock() == block)
-                .findFirst()
-                .orElse(-1);
+        int index = this.validBranches.indexOf(block);
         if (index < 0) {
             DynamicTrees.LOG.warn("Block {} not valid branch for {}.", block, this);
             return 0;
@@ -587,17 +663,23 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
 
     @Nullable
     public BranchBlock getValidBranchBlock(int index) {
-        if (index < branches.size())
-            return branches.get(index).getBlock();
+        if (index < validBranches.size())
+            return this.validBranches.get(index);
         else {
-            DynamicTrees.LOG.warn("Attempted to get branch block of index {} but {} only has {} valid branches.", index, this, branches.size());
-            return this.branches.getFirst().getBlock();
+            DynamicTrees.LOG.warn("Attempted to get branch block of index {} but {} only has {} valid branches.", index, this, validBranches.size());
+            return this.validBranches.getFirst();
         }
     }
 
-    public int getNumberOfValidBranchBlocks() {
-        return branches.size();
+    public boolean isValidBranchBlock(BranchBlock block) {
+        return this.validBranches.contains(block);
     }
+
+    public int getNumberOfValidBranchBlocks() {
+        return validBranches.size();
+    }
+
+    private boolean branchIsLadder = true;
 
     public void setBranchIsLadder(boolean branchIsLadder) {
         this.branchIsLadder = branchIsLadder;
@@ -607,6 +689,7 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return branchIsLadder;
     }
 
+    private int maxSignalDepth = 32;
 
     public int getMaxSignalDepth() {
         return maxSignalDepth;
@@ -629,8 +712,7 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
     }
 
     public Supplier<SurfaceRootBlock> createSurfaceRoot() {
-        Identifier id = suffix(this.getRegistryName(), "_root");
-        return RegistryHandler.addBlock(id, () -> new SurfaceRootBlock(id, this, defaultBranchProperties()));
+        return RegistryHandler.addBlock(suffix(this.getRegistryName(), "_root"), () -> new SurfaceRootBlock(this, getDefaultBranchProperties()));
     }
 
     public Optional<SurfaceRootBlock> getSurfaceRoot() {
@@ -715,14 +797,14 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
                 Collections.singletonList(DTBlockTags.STRIPPED_BRANCHES_THAT_BURN);
     }
 
-    public void addGeneratedBlockTags (Function<TagKey<Block>, TagAppender<Block, Block>> tagAppender){
+    public void addGeneratedBlockTags (Function<TagKey<Block>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tagAppender){
         getBranch().ifPresent(branch -> {
             tierTag(getDefaultBranchHarvestTier(), tagAppender).ifPresent(tagBuilder -> tagBuilder.add(branch));
             defaultBranchTags().forEach(tag -> {
                 if (!isOnlyIfLoaded()) {
                     tagAppender.apply(tag).add(branch);
                 } else {
-                    tagAppender.apply(tag).addOptional(branch);
+                    tagAppender.apply(tag).addOptional(BuiltInRegistries.BLOCK.getKey(branch));
                 }
             });
         });
@@ -735,27 +817,27 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
                 if (!isOnlyIfLoaded()) {
                     tagAppender.apply(tag).add(strippedBranch);
                 } else {
-                    tagAppender.apply(tag).addOptional(strippedBranch);
+                    tagAppender.apply(tag).addOptional(BuiltInRegistries.BLOCK.getKey(strippedBranch));
                 }
             });
         });
     }
 
-    protected Optional<TagAppender<Block, Block>> tierTag(@Nullable ToolMaterial tier, Function<TagKey<Block>, TagAppender<Block, Block>> tagAppender) {
+    protected Optional<IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tierTag(@Nullable Tier tier, Function<TagKey<Block>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Block>> tagAppender) {
         if (tier == null)
             return Optional.empty();
 
-        TagKey<Block> tag = tier.incorrectBlocksForDrops();
+        TagKey<Block> tag = tier.getIncorrectBlocksForDrops();
 
         return Optional.of(tagAppender.apply(tag));
     }
 
-    public void addGeneratedItemTags (Function<TagKey<Item>, TagAppender<Item, Item>> tagAppender){
+    public void addGeneratedItemTags (Function<TagKey<Item>, IntrinsicHolderTagsProvider.IntrinsicTagAppender<Item>> tagAppender){
         getBranchItem().ifPresent(item -> {
                     if (!isOnlyIfLoaded()) {
                         defaultBranchItemTags().forEach(tag -> tagAppender.apply(tag).add(item));
                     } else {
-                        defaultBranchItemTags().forEach(tag -> tagAppender.apply(tag).addOptional(item));
+                        defaultBranchItemTags().forEach(tag -> tagAppender.apply(tag).addOptional(BuiltInRegistries.ITEM.getKey(item)));
                     }
                 }
         );
@@ -765,39 +847,63 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
     // DATA GENERATION
     ///////////////////////////////////////////
 
-    public Identifier getSurfaceRootLoader(){
+    public ResourceLocation getSurfaceRootLoader(){
         return DynamicTrees.location("surface_root");
     }
-    public Identifier getBranchLoader(){
+    public ResourceLocation getBranchLoader(){
         return DynamicTrees.location("branch");
     }
+    public ResourceLocation getRootsLoader(){
+        return DynamicTrees.location("roots");
+    }
 
-    public Identifier getBranchItemParentLocation() {return DynamicTrees.location("branch");}
-    public Identifier getRootItemParentLocation() {return DynamicTrees.location("root_branch");}
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, Family>> branchStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("branch")
+            ));
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, Family>> strippedBranchStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("stripped_branch")
+            ));
+    protected final MutableLazyValue<Generator<DTDataProvider.BlockState, Family>> surfaceRootStateGenerator =
+            MutableLazyValue.supplied(blockStateGenerators.get(
+                    DynamicTrees.location("surface_root")
+            ));
+    protected final MutableLazyValue<Generator<DTDataProvider.ItemModel, Family>> branchItemModelGenerator =
+            MutableLazyValue.supplied(itemModelGenerators.get(
+                    DynamicTrees.location("branch_item")
+            ));
+    protected final MutableLazyValue<Generator<DTDataProvider.Language, Family>> familyLangGenerator =
+            MutableLazyValue.supplied(languageGenerators.get(
+                    DynamicTrees.location("family_lang")
+            ));
+
+    public ResourceLocation getBranchItemParentLocation() {return DynamicTrees.location("item/branch");}
+    public ResourceLocation getRootItemParentLocation() {return DynamicTrees.location("item/root_branch");}
 
     @Override
-    public List<Identifier> getBlockModelGenerators() {
-        List<Identifier> generators = new LinkedList<>();
-        generators.add(DynamicTrees.location("branch"));
-        if (hasStrippedBranch())
-            generators.add(DynamicTrees.location("stripped_branch"));
-        if (hasSurfaceRoot())
-            generators.add(DynamicTrees.location("surface_root"));
-        return generators;
+    public void generateStateData(DTDataProvider.BlockState provider) {
+        // Generate branch block state and model.
+        this.branchStateGenerator.get().generate(provider, this);
+        this.strippedBranchStateGenerator.get().generate(provider, this);
+
+        // Generate surface root block state and model.
+        this.surfaceRootStateGenerator.get().generate(provider, this);
     }
     @Override
-    public List<Identifier> getItemModelGenerators() {
-        return List.of(DynamicTrees.location("branch_item"));
+    public void generateItemModelData(DTDataProvider.ItemModel provider) {
+        // Generate branch item models.
+        this.branchItemModelGenerator.get().generate(provider, this);
     }
     @Override
-    public List<Identifier> getLangGenerators() {
-        return List.of(DynamicTrees.location("family_lang"));
+    public void generateLangData(DTDataProvider.Language provider) {
+        this.familyLangGenerator.get().generate(provider, this);
     }
 
     protected List<String> onlyIfLoaded = new ArrayList<>();
     //Texture overrides
-    protected HashMap<String, Identifier> textureOverrides = new HashMap<>();
-    protected HashMap<String, Identifier> modelOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> textureOverrides = new HashMap<>();
+    protected HashMap<String, ResourceLocation> modelOverrides = new HashMap<>();
     protected HashMap<String, String> langOverrides = new HashMap<>();
     public static final String BRANCH = "branch";
     public static final String BRANCH_TOP = "branch_top";
@@ -815,19 +921,19 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return !onlyIfLoaded.isEmpty();
     }
 
-    public void setTextureOverrides(Map<String, Identifier> textureOverrides) {
+    public void setTextureOverrides(Map<String, ResourceLocation> textureOverrides) {
         this.textureOverrides.putAll(textureOverrides);
     }
 
-    public Optional<Identifier> getTexturePath(String key) {
+    public Optional<ResourceLocation> getTexturePath(String key) {
         return Optional.ofNullable(textureOverrides.getOrDefault(key, null));
     }
 
-    public void setModelOverrides(Map<String, Identifier> modelOverrides) {
+    public void setModelOverrides(Map<String, ResourceLocation> modelOverrides) {
         this.modelOverrides.putAll(modelOverrides);
     }
 
-    public Optional<Identifier> getModelPath(String key) {
+    public Optional<ResourceLocation> getModelPath(String key) {
         return Optional.ofNullable(modelOverrides.getOrDefault(key, null));
     }
 
@@ -839,9 +945,9 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         return Optional.ofNullable(langOverrides.getOrDefault(key, null));
     }
 
-    public void addBranchTextures(BiConsumer<String, Identifier> textureConsumer, Identifier primitiveLogLocation, Block sourceBlock) {
-        Identifier bark = primitiveLogLocation;
-        Identifier rings = suffix(primitiveLogLocation, "_top");
+    public void addBranchTextures(BiConsumer<String, ResourceLocation> textureConsumer, ResourceLocation primitiveLogLocation, Block sourceBlock) {
+        ResourceLocation bark = primitiveLogLocation;
+        ResourceLocation rings = suffix(primitiveLogLocation, "_top");
 
         AtomicBoolean isStripped = new AtomicBoolean(false);
         getPrimitiveStrippedLog().ifPresent(l -> isStripped.set(l.equals(sourceBlock)));
@@ -857,8 +963,19 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         textureConsumer.accept("rings", rings);
     }
 
-    public List<Identifier> topBranchTextureLocations(){
-        List<Identifier> locations = new ArrayList<>();
+    public void addRootTextures(BiConsumer<String, ResourceLocation> textureConsumer, ResourceLocation primitiveLogLocation) {
+        ResourceLocation bark = suffix(primitiveLogLocation, "_side");
+        ResourceLocation rings = suffix(primitiveLogLocation, "_top");
+
+        if (textureOverrides.containsKey(ROOTS_SIDE)) bark = textureOverrides.get(ROOTS_SIDE);
+        if (textureOverrides.containsKey(ROOTS_TOP)) rings = textureOverrides.get(ROOTS_TOP);
+
+        textureConsumer.accept("bark", bark);
+        textureConsumer.accept("rings", rings);
+    }
+
+    public List<ResourceLocation> topBranchTextureLocations(){
+        List<ResourceLocation> locations = new ArrayList<>();
         if (getPrimitiveLog().isPresent()){
             locations.add(topBranchTextureLocation(getPrimitiveLog().get(), BRANCH_TOP));
         }
@@ -867,11 +984,11 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
         }
         return locations;
     }
-    protected Identifier topBranchTextureLocation(Block block, String key){
+    protected ResourceLocation topBranchTextureLocation(Block block, String key){
         if (textureOverrides.containsKey(key)){
             return textureOverrides.get(key);
         } else {
-            Identifier textureLoc = BuiltInRegistries.BLOCK.getKey(block);
+            ResourceLocation textureLoc = BuiltInRegistries.BLOCK.getKey(block);
             textureLoc = surround(textureLoc, "block/", "_top");
             return textureLoc;
         }
@@ -898,8 +1015,8 @@ public class Family extends RegistryEntry<Family> implements Resettable<Family> 
                 Pair.of("commonLeaves", this.commonLeaves),
                 Pair.of("maxBranchRadius", this.maxBranchRadius),
                 Pair.of("commonSpecies", this.commonSpecies),
-//                Pair.of("primitiveLog", this.primitiveLog),
-//                Pair.of("primitiveStrippedLog", this.primitiveStrippedLog),
+                Pair.of("primitiveLog", this.primitiveLog),
+                Pair.of("primitiveStrippedLog", this.primitiveStrippedLog),
                 Pair.of("stick", this.stick),
                 Pair.of("minRadiusForStrip", this.minRadiusForStripping)
         );

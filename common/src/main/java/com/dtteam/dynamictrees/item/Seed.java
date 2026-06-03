@@ -1,6 +1,5 @@
 package com.dtteam.dynamictrees.item;
 
-import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.lazyvalue.LazyValue;
 import com.dtteam.dynamictrees.api.worldgen.LevelContext;
 import com.dtteam.dynamictrees.block.sapling.PottedSaplingBlock;
@@ -11,18 +10,14 @@ import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.worldgen.DynamicTreeGenerationContext;
 import com.dtteam.dynamictrees.worldgen.JoCode;
 import com.dtteam.dynamictrees.worldgen.JoCodeRegistry;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.stats.Stats;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -59,12 +54,12 @@ public class Seed extends Item {//implements IPlantable {
 
     //This constructor is only used for the null registration
     public Seed() {
-        super(new Properties().setId(ResourceKey.create(Registries.ITEM, DynamicTrees.NULL)));
+        super(new Properties());
         this.species = Species.NULL_SPECIES;
     }
 
-    public Seed(Identifier id, Species species) {
-        this(species, new Properties().setId(ResourceKey.create(Registries.ITEM, id)));
+    public Seed(Species species) {
+        this(species, new Properties());
     }
 
     public Seed(@NotNull Species species, Properties properties) {
@@ -85,7 +80,7 @@ public class Seed extends Item {//implements IPlantable {
 
         if (entityItem.tickCount >= lifespan - 20) {//Perform this action 20 ticks(1 second) before dying
             final Level level = entityItem.level();
-            if (!level.isClientSide()) {//Server side only
+            if (!level.isClientSide) {//Server side only
                 final ItemStack seedStack = entityItem.getItem();
                 final BlockPos pos = new BlockPos(entityItem.blockPosition());
                 VoluntaryPlantEventResult result = Services.EVENT.postSeedVoluntaryPlantEvent(entityItem, this.getSpecies().selfOrLocationOverride(level, pos), pos, this.shouldPlant(level, pos, seedStack));
@@ -94,7 +89,7 @@ public class Seed extends Item {//implements IPlantable {
                 }
                 seedStack.setCount(0);
             }
-            entityItem.discard();
+            entityItem.kill();
         }
 
         return false;
@@ -105,7 +100,7 @@ public class Seed extends Item {//implements IPlantable {
     public boolean doPlanting(Level level, BlockPos pos, @Nullable Player planter, ItemStack seedStack) {
         final Species species = this.getSpecies().selfOrLocationOverride(level, pos);
         if (species.plantSapling(level, pos, this.getSpecies() != species)) { // Do the planting
-            String joCode = getCode(seedStack, level.getRandom());
+            String joCode = getCode(seedStack, level.random);
             if (!joCode.isEmpty()) {
                 level.removeBlock(pos, false); // Remove the newly created dynamic sapling
                 BlockPos rootPos = pos.below();
@@ -141,7 +136,7 @@ public class Seed extends Item {//implements IPlantable {
         }
         plantChance = 1.0f - accum;
 
-        return plantChance > level.getRandom().nextFloat();
+        return plantChance > level.random.nextFloat();
     }
 
     public boolean hasForcePlant(ItemStack seedStack) {
@@ -202,21 +197,23 @@ public class Seed extends Item {//implements IPlantable {
     }
 
     @Override
-    public InteractionResult use(Level level, Player player, InteractionHand hand) {
+    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand pHand) {
+        // Handle planting seed on water
         BlockHitResult blockhitresult = getPlayerPOVHitResult(level, player, ClipContext.Fluid.SOURCE_ONLY);
         BlockPos fluidPos = blockhitresult.getBlockPos();
         if (getSpecies().selfOrLocationOverride(level, fluidPos).isPlantableOnFluid()){
-            ItemStack itemstack = player.getItemInHand(hand);
+            ItemStack itemstack = player.getItemInHand(pHand);
             if (blockhitresult.getType() == HitResult.Type.BLOCK && !level.getFluidState(fluidPos).isEmpty() &&
                     level.getFluidState(fluidPos.below()).isEmpty()) {
-                if (onItemUsePlantSeed(new UseOnContext(player, hand, blockhitresult), true) == InteractionResult.SUCCESS) {
-                    return InteractionResult.SUCCESS;
+                if (onItemUsePlantSeed(new UseOnContext(player, pHand, blockhitresult), true) == InteractionResult.SUCCESS) {
+                    return InteractionResultHolder.success(itemstack);
                 }
             }
-            return InteractionResult.PASS;
+            return InteractionResultHolder.pass(itemstack);
         }
-        return super.use(level, player, hand);
+        return super.use(level, player, pHand);
     }
+
 
     public InteractionResult onItemUsePlantSeed(UseOnContext context, boolean onFluid) {
 

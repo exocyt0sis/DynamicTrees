@@ -1,10 +1,8 @@
 package com.dtteam.dynamictrees.block.leaves;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -19,8 +17,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  */
 public class SolidDynamicLeavesBlock extends DynamicLeavesBlock {
 
-    public SolidDynamicLeavesBlock(Identifier id, final LeavesProperties leavesProperties, final Properties properties) {
-        super(id, leavesProperties, properties);
+    public SolidDynamicLeavesBlock(final LeavesProperties leavesProperties, final Properties properties) {
+        super(leavesProperties, properties);
     }
 
     @Override
@@ -39,12 +37,12 @@ public class SolidDynamicLeavesBlock extends DynamicLeavesBlock {
     }
 
     @Override
-    public void fallOn(Level level, BlockState state, BlockPos pos, Entity entity, double fallDistance) {
-        super.superFallOn(level, state, pos, entity, (float)fallDistance);
+    public void fallOn(Level level, BlockState blockstate, BlockPos pos, Entity entity, float fallDistance) {
+        super.superFallOn(level, blockstate, pos, entity, fallDistance);
     }
 
     @Override
-    protected void entityInside(BlockState state, Level level, BlockPos pos, Entity entity, InsideBlockEffectApplier effectApplier, boolean isPrecise) {
+    public void entityInside(BlockState state, Level level, BlockPos pos, Entity entity) {
     }
 
 }

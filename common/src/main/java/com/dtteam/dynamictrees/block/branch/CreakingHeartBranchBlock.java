@@ -4,51 +4,58 @@ import com.dtteam.dynamictrees.api.network.MapSignal;
 import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.data.DTLootTableBuilder;
 import com.dtteam.dynamictrees.platform.Services;
-import com.dtteam.dynamictrees.registry.DTRegistries;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.family.CreakingHeartFamily;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.Identifier;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.Containers;
-import net.minecraft.world.attribute.EnvironmentAttributes;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.*;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.CreakingHeartBlock;
-import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.block.SoundType;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityTicker;
-import net.minecraft.world.level.block.entity.BlockEntityType;
-import net.minecraft.world.level.block.entity.CreakingHeartBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
-import net.minecraft.world.level.block.state.properties.*;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.storage.loot.LootTable;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Optional;
 
-public class CreakingHeartBranchBlock extends BasicBranchBlock implements EntityBlock {
+public class CreakingHeartBranchBlock extends BasicBranchBlock {
 
-    public static final EnumProperty<CreakingHeartState> STATE = BlockStateProperties.CREAKING_HEART_STATE;
+    public enum HeartState implements StringRepresentable {
+        AWAKE,
+        DORMANT,
+        UPROOTED;
+
+        @Override
+        public String getSerializedName() {
+            return this.name().toLowerCase(Locale.ENGLISH);
+        }
+    }
+
+    public static final EnumProperty<HeartState> STATE = EnumProperty.create("state", HeartState.class);
     public static final BooleanProperty HIDDEN = BooleanProperty.create("hidden");
 
-    public CreakingHeartBranchBlock(Identifier name, Properties properties) {
+    public CreakingHeartBranchBlock(ResourceLocation name, Properties properties) {
         super(name, properties);
     }
 
     @Override
     public BlockState[] createBranchStates(IntegerProperty radiusProperty, int maxRadius) {
-        registerDefaultState(defaultBlockState().setValue(STATE, CreakingHeartState.DORMANT).setValue(HIDDEN, true));
+        registerDefaultState(defaultBlockState().setValue(STATE, HeartState.DORMANT).setValue(HIDDEN, true));
         return super.createBranchStates(radiusProperty, maxRadius);
     }
 
@@ -59,188 +66,81 @@ public class CreakingHeartBranchBlock extends BasicBranchBlock implements Entity
     }
 
     @Override
-    protected BlockState updateShape(BlockState state, LevelReader level, ScheduledTickAccess ticks, BlockPos pos, Direction directionToNeighbour, BlockPos neighbourPos, BlockState neighbourState, RandomSource random) {
-        ticks.scheduleTick(pos, this, 1);
-        return super.updateShape(state, level, ticks, pos, directionToNeighbour, neighbourPos, neighbourState, random);
+    public BlockState getStateForRadius(int radius) {
+        return super.getStateForRadius(radius).setValue(STATE, HeartState.DORMANT).setValue(HIDDEN, true);
     }
 
     @Override
-    protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
-        BlockState newState = updateState(state, level, pos);
-        if (newState != state) {
-            level.setBlock(pos, newState, 3);
+    public int setRadius(LevelAccessor level, BlockPos pos, int radius, @Nullable Direction originDir, int flags) {
+        final BlockState previousState = level.getBlockState(pos);
+
+        super.setRadius(level, pos, radius, originDir, flags);
+
+        BlockState updatedState = level.getBlockState(pos);
+        if (!(updatedState.getBlock() instanceof CreakingHeartBranchBlock)) {
+            return radius;
         }
-    }
 
-    private static BlockState updateState(BlockState state, Level level, BlockPos pos) {
-        boolean hasLogs = CreakingHeartBlock.hasRequiredLogs(state, level, pos);
-        boolean disabled = state.getValue(STATE) == CreakingHeartState.UPROOTED;
-        CreakingHeartState wakeState = level.environmentAttributes().getValue(EnvironmentAttributes.CREAKING_ACTIVE, pos) ? CreakingHeartState.AWAKE : CreakingHeartState.DORMANT;
-        return hasLogs && disabled ? state.setValue(STATE, wakeState) : state;
-    }
-
-    public static boolean hasRequiredLogs(BlockState state, LevelReader level, BlockPos pos) {
-        int count = 0;
-        for (Direction dir : Direction.values()){
-            if (level.getBlockState(pos.offset(dir.getUnitVec3i())).getBlock() instanceof BranchBlock)
-                count++;
-            if (count >= 2) return true;
+        HeartState stateToKeep = HeartState.DORMANT;
+        boolean hiddenToKeep = DTConfigs.SERVER.hideCreakingHeart.get();
+        if (previousState.getBlock() instanceof CreakingHeartBranchBlock) {
+            if (previousState.hasProperty(STATE)) {
+                stateToKeep = previousState.getValue(STATE);
+                if (stateToKeep == HeartState.UPROOTED) {
+                    stateToKeep = HeartState.DORMANT;
+                }
+            }
+            if (previousState.hasProperty(HIDDEN)) {
+                hiddenToKeep = previousState.getValue(HIDDEN);
+            }
         }
-        return false;
-    }
 
-    protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
-        Containers.updateNeighboursAfterDestroy(state, level, pos);
-    }
+        updatedState = updatedState.setValue(STATE, stateToKeep).setValue(HIDDEN, hiddenToKeep);
 
-    @Override
-    public BlockState getStateForRadius(int radius, BlockState previousState) {
-        BlockState state = super.getStateForRadius(radius, previousState);
-        if (previousState.hasProperty(STATE)){
-            CreakingHeartState heartState = previousState.getValue(STATE);
-            if (heartState == CreakingHeartState.UPROOTED) heartState = CreakingHeartState.DORMANT;
-            return state.setValue(STATE, heartState);
+        final boolean wasWaterSource = previousState.getFluidState() == Fluids.WATER.getSource(false);
+        if (wasWaterSource && updatedState.hasProperty(WATERLOGGED)) {
+            updatedState = updatedState.setValue(WATERLOGGED, radius <= 7);
         }
-        if (previousState.hasProperty(HIDDEN)){
-            return state.setValue(HIDDEN, previousState.getValue(HIDDEN));
-        } else if (!DTConfigs.SERVER.hideCreakingHeart.get()) {
-            //if the previous state doesn't have hidden it means its being placed as a new block.
-            //In that case we want to respect the config.
-            return state.setValue(HIDDEN, false);
-        }
-        return state;
-    }
 
-    @Override
-    public @Nullable BlockEntity newBlockEntity(BlockPos blockPos, BlockState blockState) {
-        return new CreakingHeartBranchBlockEntity(blockPos, blockState);
-    }
-
-    protected boolean triggerEvent(BlockState state, Level level, BlockPos pos, int b0, int b1) {
-        super.triggerEvent(state, level, pos, b0, b1);
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        return blockEntity != null && blockEntity.triggerEvent(b0, b1);
-    }
-
-    @SuppressWarnings("unchecked")
-    protected static <E extends BlockEntity, A extends BlockEntity> @Nullable BlockEntityTicker<A> createTickerHelper(BlockEntityType<A> actual, BlockEntityType<E> expected, BlockEntityTicker<? super E> ticker) {
-        return expected == actual ? (BlockEntityTicker<A>) ticker : null;
-    }
-
-    public <T extends BlockEntity> @Nullable BlockEntityTicker<T> getTicker(Level level, BlockState blockState, BlockEntityType<T> type) {
-        if (level.isClientSide()) return null;
-
-        return blockState.getValue(STATE) != CreakingHeartState.UPROOTED
-                ? createTickerHelper(type, DTRegistries.CREAKING_HEART_BLOCK_ENTITY.get(), CreakingHeartBranchBlockEntity::serverTick)
-                : null;
+        level.setBlock(pos, updatedState, flags);
+        return radius;
     }
 
     @Override
     public void futureBreak(BlockState state, Level level, BlockPos cutPos, LivingEntity entity) {
-        if (level.getBlockEntity(cutPos) instanceof CreakingHeartBranchBlockEntity creakingHeartBlockEntity
-                && entity instanceof Player player) {
-            creakingHeartBlockEntity.removeProtector(player.damageSources().playerAttack(player));
-            this.tryAwardExperience(player, level, cutPos);
-        }
-
         super.futureBreak(state, level, cutPos, entity);
     }
 
     @Override
-    public void onBlockExploded(BlockState state, ServerLevel level, BlockPos pos, Explosion explosion) {
-        if (level.getBlockEntity(pos) instanceof CreakingHeartBlockEntity creakingHeartBlockEntity
-                && explosion instanceof ServerExplosion serverExplosion
-                && explosion.getBlockInteraction().shouldAffectBlocklikeEntities()) {
-            creakingHeartBlockEntity.removeProtector(serverExplosion.getDamageSource());
-
-            if (explosion.getIndirectSourceEntity() instanceof Player player) {
-                this.tryAwardExperience(player, level, pos);
-            }
-        }
-        super.onBlockExploded(state, level, pos, explosion);
-    }
-
-    private void tryAwardExperience(Player player, Level level, BlockPos pos) {
-        if (!player.preventsBlockDrops() && !player.isSpectator() && level instanceof ServerLevel serverLevel) {
-            this.popExperience(serverLevel, pos, level.getRandom().nextIntBetweenInclusive(20, 24));
-        }
-    }
-
-    protected boolean hasAnalogOutputSignal(BlockState state) {
-        return true;
-    }
-
-    protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos, Direction direction) {
-        if (state.getValue(STATE) == CreakingHeartState.UPROOTED) return 0;
-
-        if (level.getBlockEntity(pos) instanceof CreakingHeartBranchBlockEntity creakingHeartBlockEntity)
-            return creakingHeartBlockEntity.getAnalogOutputSignal();
-
-        return 0;
-    }
-
-    @Override
-    public Optional<Block> getPrimitiveLog() {
-        return ((CreakingHeartFamily)getFamily()).getPrimitiveHeartLog();
-    }
-
-    @Override
-    protected SoundType getSoundType(BlockState state) {
-        if (state.getValue(HIDDEN) && getFamily().getBranch().isPresent()){
-            return getFamily().getBranch().map(block -> block.defaultBlockState().getSoundType()).orElseGet(() -> super.getSoundType(state));
-        }
-        return super.getSoundType(state);
-    }
-
-    /**
-     * We unfortunately cannot use {@link BranchBlock#analyse(BlockState, LevelAccessor, BlockPos, Direction, MapSignal)}
-     * As it requires a {@link LevelAccessor} and we only have a {@link BlockGetter}.
-     * We use BFS instead. Should be fine as long as the trees remain small
-     */
-    @Nullable
-    public static BlockPos findFromBranch(BlockState state, BlockGetter level, BlockPos pos, int stepsLeft, HashSet<BlockPos> explored, @Nullable Direction from){
-        if (state.getBlock() instanceof CreakingHeartBranchBlock) {
-            //Deactivated hearts don't count.
-            if (state.getValue(STATE) == CreakingHeartState.UPROOTED) return null;
-            return pos;
-        }
-        if (stepsLeft <= 0) return null;
-        explored.add(pos);
-        for (Direction dir : Direction.values()){
-            if (dir == from) continue;
-            BlockPos sidePos = pos.offset(dir.getUnitVec3i());
-            if (explored.contains(sidePos)) continue;
-            BlockState sideState = level.getBlockState(sidePos);
-            if (TreeHelper.isBranch(sideState)){
-                BlockPos foundPos = findFromBranch(sideState, level, sidePos, stepsLeft-1, explored, dir.getOpposite());
-                if (foundPos != null) return foundPos;
-            }
-        }
-        return null;
-    }
-    @Nullable
-    public static BlockPos findFromBranch(BlockState state, BlockGetter level, BlockPos pos, int stepsLeft){
-        return findFromBranch(state, level, pos, stepsLeft, new HashSet<>(), null);
-    }
-
-    @Override
     public LootTable.Builder createBranchDrops(HolderLookup.Provider registries) {
-        return DTLootTableBuilder.createCreakingHeartDrops(getPrimitiveLog().get(),
-                ((CreakingHeartFamily)getFamily()).getResinItem(), 1, 3, registries);
+        return DTLootTableBuilder.createBranchDrops(getPrimitiveLog().orElse(net.minecraft.world.level.block.Blocks.OAK_LOG),
+                getFamily().getStick(1).getItem(), registries);
     }
 
-    public void addResinToBranch(BlockState state, Level level, BlockPos pos){
-        CreakingHeartFamily family = (CreakingHeartFamily)getFamily();
+    public void addResinToBranch(BlockState state, Level level, BlockPos pos) {
+        if (!(getFamily() instanceof CreakingHeartFamily family)) {
+            return;
+        }
         if (family.getAltBranch().isEmpty() || family.getBranch().isEmpty()) return;
         BranchBlock branchBlock = TreeHelper.getBranch(state);
         if (branchBlock == null || branchBlock != family.getBranch().get()) return;
-        int radius = TreeHelper.getRadius(state);
+        // This is the branch-side resin hook used by the Pale Garden backport to mirror the linked heart effect.
+        // Read radius from the source branch block instance. Using this heart block
+        // can collapse thick branches/trunks to thin geometry when properties differ.
+        int radius = branchBlock.getRadius(state);
+
+        // Skip only massive trunk-core radii where shell rendering becomes unstable.
+        // Mature pale-oak branches around the heart are often >2 radius.
+        if (radius > 8) {
+            return;
+        }
+
         family.getAltBranch().get().setRadius(level, pos, radius, null, 3);
     }
 
     @Override
     public boolean canBeStripped(BlockState state, Level level, BlockPos pos, Player player, ItemStack heldItem) {
-        return state.getValue(HIDDEN) && this.canBeStripped && Services.INTERACTION.canToolAxeStrip(heldItem);
+        return state.getValue(HIDDEN) && super.canBeStripped(state, level, pos, player, heldItem) && Services.INTERACTION.canToolAxeStrip(heldItem);
     }
 
     @Override
@@ -249,23 +149,80 @@ public class CreakingHeartBranchBlock extends BasicBranchBlock implements Entity
     }
 
     @Override
-    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, ItemStack toolStack, boolean willHarvest, FluidState fluid) {
-        if (state.getValue(HIDDEN)){
-            if (!level.isClientSide()){
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
+        if (state.getValue(HIDDEN)) {
+            if (!level.isClientSide()) {
                 level.levelEvent(null, 2001, pos, getId(state));
+                if (!player.isCreative() && getFamily() instanceof CreakingHeartFamily heartFamily) {
+                    popResource(level, pos, heartFamily.createResinDrop(level.getRandom(), this.getRadius(state)));
+                }
             }
             level.setBlock(pos, state.setValue(HIDDEN, false), 3);
             return false;
         }
-        return super.onDestroyedByPlayer(state, level, pos, player, toolStack, willHarvest, fluid);
+
+        if (!level.isClientSide() && !player.isCreative() && getFamily() instanceof CreakingHeartFamily heartFamily) {
+            popResource(level, pos, heartFamily.createResinDrop(level.getRandom(), this.getRadius(state)));
+        }
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
     }
 
     @Override
     public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
         float hardness = super.getHardness(state, level, pos);
-        if (state.getValue(HIDDEN) && getFamily() instanceof CreakingHeartFamily heartFamily)
+        if (state.getValue(HIDDEN) && getFamily() instanceof CreakingHeartFamily heartFamily) {
             return hardness * heartFamily.getHiddenHeartHardnessMultiplier();
+        }
         return hardness;
+    }
+
+    @Nullable
+    public static BlockPos findFromBranch(BlockState state, BlockGetter level, BlockPos pos, int stepsLeft, HashSet<BlockPos> explored, @Nullable Direction from) {
+        if (!TreeHelper.isBranch(state) && !(state.getBlock() instanceof CreakingHeartBranchBlock)) {
+            return null;
+        }
+        if (explored.size() > 4096) {
+            return null;
+        }
+        if (state.getBlock() instanceof CreakingHeartBranchBlock) {
+            if (state.getValue(STATE) == HeartState.UPROOTED) return null;
+            return pos;
+        }
+        if (stepsLeft <= 0) return null;
+        explored.add(pos);
+        for (Direction dir : Direction.values()) {
+            if (dir == from) continue;
+            BlockPos sidePos = pos.relative(dir);
+            if (explored.contains(sidePos)) continue;
+            BlockState sideState = level.getBlockState(sidePos);
+            if (TreeHelper.isBranch(sideState)) {
+                BlockPos foundPos = findFromBranch(sideState, level, sidePos, stepsLeft - 1, explored, dir.getOpposite());
+                if (foundPos != null) return foundPos;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    public static BlockPos findFromBranch(BlockState state, BlockGetter level, BlockPos pos, int stepsLeft) {
+        final int clampedSteps = Math.max(1, Math.min(stepsLeft, 256));
+        return findFromBranch(state, level, pos, clampedSteps, new HashSet<>(), null);
+    }
+
+    @Override
+    protected SoundType getSoundType(BlockState state) {
+        if (state.getValue(HIDDEN) && getFamily().getBranch().isPresent()) {
+            return getFamily().getBranch().map(block -> block.defaultBlockState().getSoundType()).orElseGet(() -> super.getSoundType(state));
+        }
+        return super.getSoundType(state);
+    }
+
+    /**
+     * We cannot use BranchBlock.analyse because this path is used from a BlockGetter-only context.
+     */
+    @Nullable
+    public static BlockPos findFromBranch(BlockState state, BlockGetter level, BlockPos pos) {
+        return findFromBranch(state, level, pos, 32, new HashSet<>(), null);
     }
 
 }

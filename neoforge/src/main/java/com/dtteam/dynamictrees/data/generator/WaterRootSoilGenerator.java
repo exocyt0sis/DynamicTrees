@@ -1,12 +1,9 @@
 package com.dtteam.dynamictrees.data.generator;
 
 import com.dtteam.dynamictrees.DynamicTrees;
-import com.dtteam.dynamictrees.block.soil.SoilBlock;
 import com.dtteam.dynamictrees.block.soil.SoilProperties;
-import net.minecraft.client.data.models.BlockModelGenerators;
-import net.minecraft.client.data.models.blockstates.MultiVariantGenerator;
-import net.minecraft.client.renderer.block.dispatch.Variant;
-import net.minecraft.resources.Identifier;
+import com.dtteam.dynamictrees.data.DTDataProvider;
+import com.dtteam.dynamictrees.data.provider.DTBlockStateProvider;
 
 /**
  * @author Harley O'Connor
@@ -14,13 +11,14 @@ import net.minecraft.resources.Identifier;
 public final class WaterRootSoilGenerator extends SoilStateGenerator {
 
     @Override
-    public void generate(BlockModelGenerators generators, SoilProperties input, Dependencies dependencies) {
-        Identifier rootsModel = DynamicTrees.location("block/roots_water");
-        SoilBlock soilBlock = dependencies.get(SOIL);
-
-        generators.blockStateOutput.accept(
-                MultiVariantGenerator.dispatch(soilBlock, BlockModelGenerators.variant(new Variant(rootsModel)))
-        );
+    public void generate(DTDataProvider.BlockState prov, SoilProperties input, Dependencies dependencies) {
+        if (prov instanceof DTBlockStateProvider provider){
+            // TODO: Smart model for water roots.
+            provider.simpleBlock(
+                    dependencies.get(SOIL),
+                    provider.models().getExistingFile(DynamicTrees.location("block/roots_water"))
+            );
+        }
     }
 
     @Override

@@ -3,9 +3,13 @@ package com.dtteam.dynamictrees.data.generator;
 import com.dtteam.dynamictrees.block.leaves.LeavesProperties;
 import com.dtteam.dynamictrees.data.DTDataProvider;
 import com.dtteam.dynamictrees.data.Generator;
+import com.dtteam.dynamictrees.data.provider.DTLangProvider;
 import com.dtteam.dynamictrees.tree.species.Species;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemNameBlockItem;
 import net.minecraft.world.level.block.Block;
 import org.apache.commons.lang3.StringUtils;
 
@@ -14,12 +18,14 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class LeavesPropertiesLangGenerator implements Generator<DTDataProvider.Language, LeavesProperties> {
-    DTDataProvider.Language provider;
+    DTLangProvider provider;
 
     @Override
     public void generate(DTDataProvider.Language prov, LeavesProperties input, Dependencies dependencies) {
-        this.provider = prov;
-        //input.getDynamicLeavesBlock().ifPresent(leaves -> blockLang(leaves, input.getLangOverride("leaves")));
+        if (prov instanceof DTLangProvider provider1){
+            this.provider = provider1;
+            //input.getDynamicLeavesBlock().ifPresent(leaves -> blockLang(leaves, input.getLangOverride("leaves")));
+        }
     }
 
     @Override
@@ -27,11 +33,11 @@ public class LeavesPropertiesLangGenerator implements Generator<DTDataProvider.L
         return new Dependencies();
     }
 
-//    protected void itemLang(Item entry, Optional<String> override) {
-//        if (!(entry instanceof BlockItem) || entry instanceof ItemNameBlockItem) {
-//            provider.addItem(() -> entry, override.orElse(checkReplace(BuiltInRegistries.ITEM.getKey(entry))));
-//        }
-//    }
+    protected void itemLang(Item entry, Optional<String> override) {
+        if (!(entry instanceof BlockItem) || entry instanceof ItemNameBlockItem) {
+            provider.addItem(() -> entry, override.orElse(checkReplace(BuiltInRegistries.ITEM.getKey(entry))));
+        }
+    }
 
     protected void speciesLang(Species entry, Optional<String> override) {
         provider.add(entry.getLocalizedName(), override.orElse(checkReplace(entry.getRegistryName())));
@@ -41,7 +47,7 @@ public class LeavesPropertiesLangGenerator implements Generator<DTDataProvider.L
         provider.addBlock(() -> entry, blah.orElse(checkReplace(BuiltInRegistries.BLOCK.getKey(entry))));
     }
 
-    protected String checkReplace(Identifier registryObject) {
+    protected String checkReplace(ResourceLocation registryObject) {
         return Arrays.stream(registryObject.getPath().split("_"))
                 .map(StringUtils::capitalize)
                 .filter(s -> !s.isBlank())

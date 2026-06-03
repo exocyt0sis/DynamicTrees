@@ -1,26 +1,23 @@
 package com.dtteam.dynamictrees.treepack;
 
-import com.dtteam.dynamictrees.DynamicTrees;
-import com.dtteam.dynamictrees.api.configuration.ConfigurationTemplateResourceLoader;
-import com.dtteam.dynamictrees.api.resource.TreeResourceManager;
-import com.dtteam.dynamictrees.platform.Services;
-import com.dtteam.dynamictrees.systems.genfeature.GenFeature;
-import com.dtteam.dynamictrees.systems.genfeature.GenFeatureConfiguration;
-import com.dtteam.dynamictrees.systems.growthlogic.GrowthLogicKit;
-import com.dtteam.dynamictrees.systems.growthlogic.GrowthLogicKitConfiguration;
+import com.dtteam.dynamictrees.*;
+import com.dtteam.dynamictrees.api.configuration.*;
+import com.dtteam.dynamictrees.api.resource.*;
+import com.dtteam.dynamictrees.platform.*;
+import com.dtteam.dynamictrees.systems.genfeature.*;
+import com.dtteam.dynamictrees.systems.growthlogic.*;
 import com.dtteam.dynamictrees.treepack.loader.*;
-import net.minecraft.network.chat.Component;
-import net.minecraft.server.packs.PackLocationInfo;
-import net.minecraft.server.packs.repository.PackSource;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
-import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.network.chat.*;
+import net.minecraft.server.packs.*;
+import net.minecraft.server.packs.repository.*;
+import net.minecraft.server.packs.resources.*;
+import net.minecraft.util.profiling.*;
+import net.minecraft.world.item.crafting.*;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * @author Harley O'Connor
@@ -67,7 +64,7 @@ public final class Resources {
         registerModTreePacks();
         registerFlatTreePack();
 
-        DynamicTrees.LOG.info("Successfully loaded {} tree packs.", MANAGER.listPacks().count());
+        DynamicTrees.LOG.debug("Successfully loaded {} tree packs.", MANAGER.listPacks().count());
     }
 
     private static void addDefaultLoaders() {
@@ -95,10 +92,8 @@ public final class Resources {
     private static void addModTreePack(ModFileContainer modFile) {
         final Optional<Path> treesPath = modFile.findResource(TREES);
         if (treesPath.isEmpty()) {
-            DynamicTrees.LOG.debug("No tree pack found in namespace {}, skipping.", modFile.getModId());
+            DynamicTrees.LOG.error("Error loading Tree Pack for mod {}", modFile.getModId());
             return;
-        } else {
-            DynamicTrees.LOG.info("Loading tree pack found in mod {}.", modFile.getModId());
         }
         final Path absTreesPath = treesPath.get().toAbsolutePath();
 
@@ -118,7 +113,6 @@ public final class Resources {
             "dynamictrees", Component.translatable("treePack.dynamictrees.name"), PackSource.BUILT_IN, Optional.empty()
     );
     private static void registerFlatTreePack() {
-        DynamicTrees.LOG.info("Loading flat tree packs.");
         final File mainTreeFolder = getTreeFolder();
         MANAGER.addPack(new TreePackResources(FLAT_TREE_PACK_INFO, mainTreeFolder.toPath().toAbsolutePath()));
     }
@@ -145,13 +139,15 @@ public final class Resources {
         }
 
         @Override
-        public CompletableFuture<Void> reload(SharedState sharedState, Executor executor, PreparationBarrier preparationBarrier, Executor executor1) {
-            final CompletableFuture<?>[] futures = MANAGER.prepareReload(executor, executor1);
+        public CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager resourceManager,
+                                              ProfilerFiller preparationsProfiler, ProfilerFiller reloadProfiler,
+                                              Executor backgroundExecutor, Executor gameExecutor) {
+            final CompletableFuture<?>[] futures = MANAGER.prepareReload(gameExecutor, backgroundExecutor);
 
             // Reload all reload listeners in the trees resource manager and registers dirt bucket recipes.
             return CompletableFuture.allOf(futures)
-                    .thenCompose(preparationBarrier::wait)
-                    .thenAcceptAsync(v -> MANAGER.reload(futures), executor);
+                    .thenCompose(stage::wait)
+                    .thenAcceptAsync(v -> MANAGER.reload(futures), gameExecutor);
         }
 
     }

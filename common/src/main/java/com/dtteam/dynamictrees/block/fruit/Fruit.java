@@ -6,18 +6,19 @@ import com.dtteam.dynamictrees.api.lazyvalue.LazyValue;
 import com.dtteam.dynamictrees.api.registry.RegistryEntry;
 import com.dtteam.dynamictrees.api.registry.RegistryHandler;
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
+import com.dtteam.dynamictrees.api.season.ClimateZoneType;
 import com.dtteam.dynamictrees.api.worldgen.LevelContext;
 import com.dtteam.dynamictrees.block.DynamicBlockProperties;
 import com.dtteam.dynamictrees.block.Growable;
 import com.dtteam.dynamictrees.config.DTConfigs;
 import com.dtteam.dynamictrees.data.DTLootTableBuilder;
+import com.dtteam.dynamictrees.systems.season.SeasonHelper;
 import com.dtteam.dynamictrees.treepack.Resettable;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.Item;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -32,12 +33,13 @@ import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import org.apache.commons.lang3.function.TriFunction;
 import org.apache.logging.log4j.LogManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 /**
@@ -58,9 +60,7 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
 
     private Supplier<FruitBlock> block;
 
-    /**
-     * Remember that 0 is a valid age. So the number of states is maxAge + 1.
-     */
+
     private int maxAge = 3;
 
     /**
@@ -83,7 +83,6 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
      * up using vanilla loot tables.
      */
     private ItemStack itemStack;
-    private Item item;
 
     private float growthChance = 0.2F;
     private float requiredProductionFactor = 0.3F;
@@ -96,15 +95,8 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
     private int minDropCount = 1;
     private int maxDropCount = 1;
 
-    private boolean rotateModel = false;
-
-    public Fruit(Identifier registryName) {
+    public Fruit(ResourceLocation registryName) {
         super(registryName);
-    }
-
-    @Override
-    public final Class<Fruit> getRegistryType() {
-        return REGISTRY.getType();
     }
 
     public void setSeasonalFactorGetter(BiFunction<LevelContext, BlockPos, Float> seasonalFactorGetter) {
@@ -132,9 +124,12 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
      * @param properties the properties of the block. May be the {@linkplain #getDefaultBlockProperties default
      *                   properties} or a modification of them.
      */
-    public final void createBlock(@Nullable Identifier name, Block.Properties properties) {
-        Identifier id = name == null ? this.getRegistryName() : name;
-        block = RegistryHandler.addBlock(id, () -> new FruitBlock(id, properties, this));
+    public final void createBlock(@Nullable ResourceLocation name, Block.Properties properties) {
+        block = RegistryHandler.addBlock(name == null ? this.getRegistryName() : name, () -> createBlock(properties));
+    }
+
+    protected FruitBlock createBlock(Block.Properties properties) {
+        return new FruitBlock(properties, this);
     }
 
     public MapColor getDefaultMapColor() {
@@ -148,7 +143,7 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
     public BlockBehaviour.Properties getDefaultBlockProperties(MapColor mapColor) {
         return BlockBehaviour.Properties.of()
                 .mapColor(mapColor)
-                .noCollision()
+                .noCollission()
                 .sound(SoundType.CROP)
                 .randomTicks()
                 .strength(0.3F);
@@ -178,14 +173,6 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
         this.minDropCount = minDropCount;
     }
 
-    public void setRotateModel(boolean rotateModel) {
-        this.rotateModel = rotateModel;
-    }
-
-    public boolean rotateModel() {
-        return rotateModel;
-    }
-
     public final VoxelShape getBlockShape(int age) {
         return blockShapes[age];
     }
@@ -213,21 +200,15 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
      * @return a copy of this fruit's item stack
      */
     public final ItemStack getItemStack() {
-        if (itemStack != null)
-            return itemStack.copy();
-        else if (item != null)
-            return new ItemStack(item);
-        LogManager.getLogger().warn("Invoked too early or item was not set on \"{}\".", getRegistryName());
-        return new ItemStack(Items.AIR);
+        if (itemStack == null) {
+            LogManager.getLogger().warn("Invoked too early or item was not set on \"{}\".", getRegistryName());
+            return new ItemStack(Items.AIR);
+        }
+        return itemStack.copy();
     }
 
-    public void setItem(Item item) {
-        this.item = item;
-    }
-
-    public void setItemStack(ItemStack stack) {
-        this.itemStack = stack;
-        this.item = stack.getItem();
+    public void setItemStack(ItemStack itemStack) {
+        this.itemStack = itemStack;
     }
 
     public final float getGrowthChance() {
@@ -306,17 +287,17 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
         return true;
     }
 
-    private final LazyValue<Identifier> blockDropsPath = LazyValue.supplied(() ->
-            IdentifierUtils.prefix(BuiltInRegistries.BLOCK.getKey(block.get()),"blocks/"));
+    private final LazyValue<ResourceLocation> blockDropsPath = LazyValue.supplied(() ->
+            ResourceLocationUtils.prefix(BuiltInRegistries.BLOCK.getKey(block.get()),"blocks/"));
 
-    public Identifier getBlockDropsPath() {
+    public ResourceLocation getBlockDropsPath() {
         return blockDropsPath.get();
     }
 
     public LootTable.Builder createBlockDrops(HolderLookup.Provider registries) {
         if (minDropCount > maxDropCount || maxDropCount <= 0)
             throw new IllegalArgumentException("Attempted to create loot tables for "+getRegistryName()+" with an invalid drop count range ["+minDropCount+","+maxDropCount+"].");
-        return DTLootTableBuilder.createFruitPodDrops(block.get(), item, ageProperty, maxAge, minDropCount, maxDropCount, registries);
+        return DTLootTableBuilder.createFruitPodDrops(block.get(), getItemStack().getItem(), ageProperty, maxAge, minDropCount, maxDropCount, registries);
     }
 
     @NotNull
@@ -330,8 +311,4 @@ public class Fruit extends RegistryEntry<Fruit> implements Resettable<Fruit> {
         return this;
     }
 
-    @Override
-    public List<Identifier> getBlockModelGenerators() {
-        return List.of(DynamicTrees.location("fruit"));
-    }
 }

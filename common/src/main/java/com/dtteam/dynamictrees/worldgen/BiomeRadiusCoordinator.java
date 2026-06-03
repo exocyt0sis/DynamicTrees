@@ -2,7 +2,7 @@ package com.dtteam.dynamictrees.worldgen;
 
 import com.dtteam.dynamictrees.api.worldgen.RadiusCoordinator;
 import net.minecraft.core.Holder;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.biome.Biome;
@@ -17,11 +17,11 @@ public class BiomeRadiusCoordinator implements RadiusCoordinator {
 
     public PerlinSimplexNoise noiseGenerator;
     protected final LevelAccessor level;
-    protected final Identifier dimensionName;
+    protected final ResourceLocation dimensionName;
     protected int pass;
     protected Function<Integer, Integer> chunkMultipass;
 
-    public BiomeRadiusCoordinator(Identifier dimensionName, LevelAccessor level) {
+    public BiomeRadiusCoordinator(ResourceLocation dimensionName, LevelAccessor level) {
         this.noiseGenerator = new PerlinSimplexNoise(new WorldgenRandom(WorldgenRandom.Algorithm.LEGACY.newInstance(96)), new ArrayList<>(Collections.singletonList(1)));
         this.level = level;
         this.dimensionName = dimensionName;
@@ -35,7 +35,7 @@ public class BiomeRadiusCoordinator implements RadiusCoordinator {
         }
 
         final double scale = 128; // Effectively scales up the noisemap
-        final Holder<Biome> biome = this.level.getUncachedNoiseBiome((x + 8) >> 2, level.getMaxY() >> 2, (z + 8) >> 2); // Placement is offset by +8,+8
+        final Holder<Biome> biome = this.level.getUncachedNoiseBiome((x + 8) >> 2, level.getMaxBuildHeight() >> 2, (z + 8) >> 2); // Placement is offset by +8,+8
 
         final double noiseDensity = (this.noiseGenerator.getValue(x / scale, z / scale, false) + 1D) / 2.0D; // Gives 0.0 to 1.0
         final double density = BiomeDatabases.getDimensionalOrDefault(this.dimensionName)
@@ -56,7 +56,7 @@ public class BiomeRadiusCoordinator implements RadiusCoordinator {
         this.pass = pass;
 
         if (pass == 0) {
-            final Holder<Biome> biome = this.level.getUncachedNoiseBiome(((chunkX << 4) + 8) >> 2, level.getMaxY() >> 2, ((chunkZ << 4) + 8) >> 2); // Aim at center of chunk
+            final Holder<Biome> biome = this.level.getUncachedNoiseBiome(((chunkX << 4) + 8) >> 2, level.getMaxBuildHeight() >> 2, ((chunkZ << 4) + 8) >> 2); // Aim at center of chunk
             this.chunkMultipass = BiomeDatabases.getDimensionalOrDefault(this.dimensionName).getMultipass(biome);
         }
 

@@ -1,10 +1,12 @@
 package com.dtteam.dynamictrees.block.leaves;
 
 import com.dtteam.dynamictrees.api.registry.TypedRegistry;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.material.PushReaction;
 
 /**
  * An extension of {@link LeavesProperties} which provides {@link SolidDynamicLeavesBlock} for a solid version of {@link
@@ -16,10 +18,9 @@ public class SolidLeavesProperties extends LeavesProperties {
 
     public static final TypedRegistry.EntryType<LeavesProperties> TYPE = TypedRegistry.newType(SolidLeavesProperties::new);
 
-    public SolidLeavesProperties(Identifier registryName) {
+    public SolidLeavesProperties(ResourceLocation registryName) {
         super(registryName);
         this.requiresShears = false;
-        this.leavesParticleChance = 0;
     }
 
     @Override
@@ -35,7 +36,7 @@ public class SolidLeavesProperties extends LeavesProperties {
 
     @Override
     protected DynamicLeavesBlock createDynamicLeaves(BlockBehaviour.Properties properties) {
-        return new SolidDynamicLeavesBlock(getBlockRegistryName(),this, properties);
+        return new SolidDynamicLeavesBlock(this, properties);
     }
 
 }

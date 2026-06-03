@@ -192,7 +192,7 @@ public class JoCode {
         int leafMapZLen = radius * 2 + leafCluster.getLenZ();
         final SimpleVoxmap leafMap = new SimpleVoxmap(leafMapXLen, species.getWorldGenLeafMapHeight(), leafMapZLen)
                 .setMapAndCenter(treePos, new BlockPos(leafMapXLen/2, 0, leafMapZLen/2));
-        final NodeInspector inflator = species.getNodeInflator(leafMap, species.getMaxBranchRadius()); // This is responsible for thickening the branches.
+        final NodeInspector inflator = species.getNodeInflator(leafMap); // This is responsible for thickening the branches.
         final FindEndsNode endFinder = new FindEndsNode(); // This is responsible for gathering a list of branch end points.
         final MapSignal signal = new MapSignal(inflator, endFinder); // The inflator signal will "paint" a temporary voxmap of all of the leaves and branches.
         signal.destroyLoopedNodes = this.careful;
@@ -505,8 +505,8 @@ public class JoCode {
 
     public Component getTextComponent() {
         return Component.literal(this.toString()).withStyle(style ->
-                style.withColor(ChatFormatting.AQUA).withClickEvent(new ClickEvent.CopyToClipboard(this.toString()))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.translatable("chat.copy.click")))
+                style.withColor(ChatFormatting.AQUA).withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, this.toString()))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("chat.copy.click")))
         );
     }
 

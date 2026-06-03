@@ -39,7 +39,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -236,16 +235,11 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         return shouldGenerateDrops();
     }
 
-    private Item getConfiguredStickItem() {
-        final Item familyStick = getFamily().getStick(1).getItem();
-        return familyStick == Items.AIR ? Items.STICK : familyStick;
-    }
-
     public LootTable.Builder createBlockDrops(HolderLookup.Provider registries) {
         if (primitiveLeaves != null && getPrimitiveLeavesBlock().isPresent()) {
-            return DTLootTableBuilder.createLeavesBlockDrops(primitiveLeaves.getBlock(), seedDropChances, getConfiguredStickItem(), registries);
+            return DTLootTableBuilder.createLeavesBlockDrops(primitiveLeaves.getBlock(), seedDropChances, getFamily().getStick(1).getItem(), registries);
         }
-        return DTLootTableBuilder.createLeavesDrops(seedDropChances, LootContextParamSets.BLOCK, getConfiguredStickItem(), registries);
+        return DTLootTableBuilder.createLeavesDrops(seedDropChances, LootContextParamSets.BLOCK, getFamily().getStick(1).getItem(), registries);
     }
 
     private final LootTableSupplier lootTableSupplier;
@@ -263,7 +257,7 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     }
 
     public LootTable.Builder createDrops(HolderLookup.Provider registries) {
-        return DTLootTableBuilder.createLeavesDrops(seedDropChances, DTLootParameterSets.LEAVES, getConfiguredStickItem(), registries);
+        return DTLootTableBuilder.createLeavesDrops(seedDropChances, DTLootParameterSets.LEAVES, getFamily().getStick(1).getItem(), registries);
     }
 
     public List<ItemStack> getDrops(Level level, BlockPos pos, ItemStack tool, Species species) {

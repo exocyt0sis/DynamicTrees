@@ -27,4 +27,8 @@ public class BiomeGenSettingsBuilderWrapperNF extends BiomeGenSettingsBuilderWra
         return settingsBuilder.getFeatures(stage);
     }
 
+    @Override
+    public List<Holder<ConfiguredWorldCarver<?>>> getCarvers(GenerationStep.Carving stage) {
+        return settingsBuilder.getCarvers(stage);
+    }
 }

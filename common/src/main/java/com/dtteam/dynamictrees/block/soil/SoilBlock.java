@@ -17,16 +17,14 @@ import com.dtteam.dynamictrees.tree.ChunkTreeHelper;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.family.Family;
 import com.dtteam.dynamictrees.tree.species.Species;
+import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -40,10 +38,10 @@ import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.PushReaction;
-import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
@@ -70,8 +68,8 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
 
     private final SoilProperties properties;
 
-    public SoilBlock(Identifier id, SoilProperties properties, Properties blockProperties) {
-        super(blockProperties.randomTicks().pushReaction(PushReaction.BLOCK).setId(ResourceKey.create(Registries.BLOCK, id)));
+    public SoilBlock(SoilProperties properties, Properties blockProperties) {
+        super(blockProperties.randomTicks().pushReaction(PushReaction.BLOCK));
         this.properties = properties;
         registerDefaultState(defaultBlockState().setValue(FERTILITY, 0).setValue(IS_VARIANT, false));
     }
@@ -136,10 +134,10 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
         return getPrimitiveSoilBlock().defaultBlockState().getSoundType();
     }
 
-//    @Override
-//    protected boolean propagatesSkylightDown(BlockState state) {
-//        return getPrimitiveSoilBlock().defaultBlockState().propagatesSkylightDown(state);
-//    }
+    @Override
+    protected boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
+        return getPrimitiveSoilBlock().defaultBlockState().propagatesSkylightDown(level, pos);
+    }
 
     @Override
     public float getFriction() {
@@ -151,10 +149,10 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
         return getPrimitiveSoilBlock().getExplosionResistance();
     }
 
-//    @Override
-//    protected int getLightDampening(BlockState state) {
-//        return getPrimitiveSoilBlock().defaultBlockState().getLightDampening(state);
-//    }
+    @Override
+    protected int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) {
+        return getPrimitiveSoilBlock().defaultBlockState().getLightBlock(level, pos);
+    }
 
     @Override
     public List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
@@ -162,8 +160,8 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
     }
 
     @Override
-    protected ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
-        return getPrimitiveSoilState(state).getCloneItemStack(level, pos, includeData);
+    public ItemStack getCloneItemStack(LevelReader level, BlockPos pos, BlockState state) {
+        return getPrimitiveSoilBlock().getCloneItemStack(level, pos, getPrimitiveSoilState(state));
     }
 
     @Override
@@ -271,17 +269,17 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
     }
 
     @Override
-    protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos, Direction direction) {
-        return getFertility(state, level, pos);
+    public int getAnalogOutputSignal(BlockState blockState, Level level, BlockPos pos) {
+        return getFertility(blockState, level, pos);
     }
 
     @Override
-    protected InteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
         return getFamily(state, level, pos).onTreeActivated(
                 new Family.TreeActivationContext(
                         level, TreeHelper.findRootNode(level, pos), pos, state, player, hand, stack, hitResult
                 )
-        ) ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+        ) ? ItemInteractionResult.SUCCESS : ItemInteractionResult.FAIL;
     }
 
     public void destroyTree(Level level, BlockPos rootPos){
@@ -292,10 +290,10 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
         destroyTree(level, rootPos, player, getTrunkDirection(level, rootPos).getOpposite()); //Roots
     }
     public void destroyTree(Level level, BlockPos rootPos, @Nullable Player player, Direction dir) {
-        Optional<BranchBlock> branch = TreeHelper.getBranchOpt(level.getBlockState(rootPos.offset(dir.getUnitVec3i())));
+        Optional<BranchBlock> branch = TreeHelper.getBranchOpt(level.getBlockState(rootPos.offset(dir.getNormal())));
 
         if (branch.isPresent()) {
-            BranchDestructionData destroyData = branch.get().destroyBranchFromNode(level, rootPos.offset(dir.getUnitVec3i()), dir.getOpposite(), true, player);
+            BranchDestructionData destroyData = branch.get().destroyBranchFromNode(level, rootPos.offset(dir.getNormal()), dir.getOpposite(), true, player);
             FallingTreeEntity.dropTree(level, destroyData, new ArrayList<>(0), FallingTreeEntity.DestroyType.ROOT);
         }
     }
@@ -313,7 +311,7 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
 
     /** NeoForge Override */
     @SuppressWarnings("unused")
-    public void onBlockExploded(BlockState state, ServerLevel level, BlockPos pos, Explosion explosion) {
+    public void onBlockExploded(BlockState state, Level level, BlockPos pos, Explosion explosion) {
         destroyTree(level, pos);
         level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
         wasExploded(level, pos, explosion);
@@ -446,26 +444,13 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
         return signal;
     }
 
-    //TODO: can be optimized
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, @org.jspecify.annotations.Nullable Orientation orientation, boolean movedByPiston) {
-        boolean shouldUpdate = false;
-        if (orientation != null){
-            for (Direction dir : orientation.getDirections()){
-                BlockPos neighborPos = pos.offset(dir.getUnitVec3i());
-                if (neighborPos.equals(pos.relative(getTrunkDirection(level, pos)))){
-                    shouldUpdate = true;
-                    break;
-                }
-            }
-        }
-        if (shouldUpdate){
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
+        if (neighborPos.equals(pos.relative(getTrunkDirection(level, pos)))){
             level.scheduleTick(pos, this, 1);
         }
-
-        super.neighborChanged(state, level, pos, block, orientation, movedByPiston);
+        super.neighborChanged(state, level, pos, neighborBlock, neighborPos, movedByPiston);
     }
-
 
     @Override
     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
@@ -543,6 +528,15 @@ public class SoilBlock extends BlockWithDynamicHardness implements TreePart, Ent
     ///////////////////////////////////////////
     // RENDERING
     ///////////////////////////////////////////
+
+    public int colorMultiplier(BlockColors blockColors, BlockState state, @Nullable BlockAndTintGetter level, @Nullable BlockPos pos, int tintIndex) {
+        final int white = 0xFFFFFFFF;
+        if (tintIndex == getSoilProperties().foliageTintIndex)
+            return blockColors.getColor(getPrimitiveSoilState(state), level, pos, tintIndex);
+        else if (tintIndex == getSoilProperties().rootsTintIndex)
+            return state.getBlock() instanceof SoilBlock ? rootColor(state, level, pos) : white;
+        return white;
+    }
 
     public boolean getColorFromBark() {
         return false;

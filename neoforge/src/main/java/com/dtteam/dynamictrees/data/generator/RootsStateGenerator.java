@@ -2,26 +2,21 @@ package com.dtteam.dynamictrees.data.generator;
 
 import com.dtteam.dynamictrees.block.branch.BasicRootsBlock;
 import com.dtteam.dynamictrees.block.branch.BranchBlock;
+import com.dtteam.dynamictrees.data.DTDataProvider;
 import com.dtteam.dynamictrees.data.Generator;
-import com.dtteam.dynamictrees.data.builder.BasicLoaderBuilder;
-import com.dtteam.dynamictrees.tree.family.AerialRootsFamily;
+import com.dtteam.dynamictrees.data.builder.BranchLoaderBuilder;
+import com.dtteam.dynamictrees.data.provider.DTBlockStateProvider;
 import com.dtteam.dynamictrees.tree.family.Family;
-import net.minecraft.client.data.models.BlockModelGenerators;
-import net.minecraft.client.data.models.MultiVariant;
-import net.minecraft.client.data.models.blockstates.MultiVariantGenerator;
-import net.minecraft.client.data.models.blockstates.PropertyDispatch;
-import net.minecraft.client.data.models.model.ModelLocationUtils;
-import net.minecraft.client.renderer.block.dispatch.Variant;
-import net.minecraft.resources.Identifier;
+import com.dtteam.dynamictrees.tree.family.UndergroundRootsFamily;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author Max Hyper
  */
-public class RootsStateGenerator implements Generator<BlockModelGenerators, Family> {
+public class RootsStateGenerator implements Generator<DTDataProvider.BlockState, Family> {
 
     public static final DependencyKey<BranchBlock> ROOT = new DependencyKey<>("root");
     public static final DependencyKey<Block> PRIMITIVE_ROOT = new DependencyKey<>("primitive_root");
@@ -29,48 +24,35 @@ public class RootsStateGenerator implements Generator<BlockModelGenerators, Fami
     public static final DependencyKey<Block> PRIMITIVE_COVERED_ROOT = new DependencyKey<>("covered_primitive_root");
 
     @Override
-    public void generate(BlockModelGenerators generators, Family input, Dependencies dependencies) {
-        if (!(input instanceof AerialRootsFamily rootsInput)) return;
+    public void generate(DTDataProvider.BlockState prov, Family input, Dependencies dependencies) {
+        if (prov instanceof DTBlockStateProvider provider){
+            final BranchBlock root = dependencies.get(ROOT);
+            final BranchLoaderBuilder builderExposed = provider.models().getBuilder(
+                    Objects.requireNonNull(BuiltInRegistries.BLOCK.getKey(root)).getPath()
+            ).customLoader(BranchLoaderBuilder.branchBuilders.get(input.getRootsLoader()));
+            input.addRootTextures(builderExposed::texture, provider.block(BuiltInRegistries.BLOCK.getKey(dependencies.get(PRIMITIVE_ROOT))));
 
-        final BranchBlock branch = dependencies.get(ROOT);
-        final Block primitiveExposed = dependencies.get(PRIMITIVE_ROOT);
-        final Block primitiveFilled = dependencies.get(PRIMITIVE_FILLED_ROOT);
-        final Block primitiveCovered = dependencies.get(PRIMITIVE_COVERED_ROOT);
-        Identifier primitiveExposedPath = ModelLocationUtils.getModelLocation(primitiveExposed);
-        Identifier primitiveFilledPath = ModelLocationUtils.getModelLocation(primitiveFilled);
-        Identifier primitiveCoveredPath = ModelLocationUtils.getModelLocation(primitiveCovered);
+            final BranchLoaderBuilder builderFilled = provider.models().getBuilder(
+                    Objects.requireNonNull(BuiltInRegistries.BLOCK.getKey(root)).getPath() + "_filled"
+            ).customLoader(BranchLoaderBuilder.branchBuilders.get(input.getRootsLoader()));
+            input.addRootTextures(builderFilled::texture, provider.block(BuiltInRegistries.BLOCK.getKey(dependencies.get(PRIMITIVE_FILLED_ROOT))));
 
-        final Map<String, Identifier> exposedTextures = new HashMap<>();
-        final Map<String, Identifier> filledTextures = new HashMap<>();
-        addTextures(rootsInput, exposedTextures, primitiveExposedPath);
-        addTextures(rootsInput, filledTextures, primitiveFilledPath);
-
-        BasicLoaderBuilder exposedBuilder = BasicLoaderBuilder.loaderBuilders.get(rootsInput.getRootsLoader()).apply(exposedTextures, input);
-        BasicLoaderBuilder filledBuilder = BasicLoaderBuilder.loaderBuilders.get(rootsInput.getRootsLoader().withSuffix("_opaque")).apply(filledTextures, input);
-
-        acceptOutput(generators, exposedBuilder, filledBuilder, primitiveCoveredPath, branch, input, dependencies);
-    }
-
-    protected void acceptOutput(BlockModelGenerators generators, BasicLoaderBuilder exposedBuilder, BasicLoaderBuilder filledBuilder, Identifier primitiveCoveredPath, BranchBlock branch, Family input, Dependencies dependencies) {
-        var propertyDispatch = PropertyDispatch.initial(BasicRootsBlock.LAYER).generate(
-                layer -> switch (layer){
-                    case EXPOSED -> MultiVariant.of(exposedBuilder);
-                    case FILLED -> MultiVariant.of(filledBuilder);
-                    default -> BlockModelGenerators.variant(new Variant(primitiveCoveredPath));
-                }
-        );
-
-        generators.blockStateOutput.accept(MultiVariantGenerator.dispatch(branch).with(propertyDispatch));
-    }
-
-
-    protected void addTextures(AerialRootsFamily rootsInput, Map<String, Identifier> exposedTextures, Identifier primitiveExposedPath) {
-        rootsInput.addRootTextures(exposedTextures::put, primitiveExposedPath);
+            provider.getVariantBuilder(root)
+                    .partialState().with(BasicRootsBlock.LAYER, BasicRootsBlock.Layer.EXPOSED)
+                    .modelForState().modelFile(builderExposed.end().renderType("cutout_mipped")).addModel()
+                    .partialState().with(BasicRootsBlock.LAYER, BasicRootsBlock.Layer.FILLED)
+                    .modelForState().modelFile(builderFilled.end()).addModel()
+                    .partialState().with(BasicRootsBlock.LAYER, BasicRootsBlock.Layer.COVERED)
+                    .modelForState().modelFile(provider.models().getExistingFile(input
+                            .getModelPath(Family.COVERED_ROOTS_BLOCK)
+                            .orElse(provider.blockTexture(dependencies.get(PRIMITIVE_COVERED_ROOT)))
+                    )).addModel();
+        }
     }
 
     @Override
     public Dependencies gatherDependencies(Family input) {
-        AerialRootsFamily mangroveInput = (AerialRootsFamily) input;
+        UndergroundRootsFamily mangroveInput = (UndergroundRootsFamily) input;
         return new Dependencies()
                 .append(ROOT, mangroveInput.getRoots())
                 .append(PRIMITIVE_ROOT, mangroveInput.getPrimitiveRoots())

@@ -49,11 +49,11 @@ public class BlockPosBounds implements Iterable<BlockPos> {
 
     public BlockPosBounds(LevelAccessor level, ChunkPos cPos) {
         minX = cPos.getMinBlockX();
-        minY = level.getMinY();
+        minY = level.getMinBuildHeight();
         minZ = cPos.getMinBlockZ();
 
         maxX = cPos.getMaxBlockX();
-        maxY = level.getMaxY();
+        maxY = level.getMaxBuildHeight();
         maxZ = cPos.getMaxBlockZ();
     }
 

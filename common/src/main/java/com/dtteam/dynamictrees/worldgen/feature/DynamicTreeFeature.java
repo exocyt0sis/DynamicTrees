@@ -17,7 +17,7 @@ import com.dtteam.dynamictrees.worldgen.DynamicTreeGenerationContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.ChunkPos;
@@ -45,7 +45,7 @@ public class DynamicTreeFeature extends Feature<NoneFeatureConfiguration> {
 
     public static void setup() {
         concreteBlocks = Arrays.stream(DyeColor.values())
-                .map(color -> BuiltInRegistries.BLOCK.get(Identifier.parse(color.getName() + "_concrete")).get().value())
+                .map(color -> BuiltInRegistries.BLOCK.get(ResourceLocation.parse(color.getName() + "_concrete")))
                 .toArray(Block[]::new);
     }
 
@@ -62,7 +62,7 @@ public class DynamicTreeFeature extends Feature<NoneFeatureConfiguration> {
         }
 
         BiomeDatabase biomeDatabase = BiomeDatabases.getDimensionalOrDefault(levelContext.dimensionName());
-        ChunkPos chunkPos = ChunkPos.containing(context.origin());
+        ChunkPos chunkPos = new ChunkPos(context.origin());
 
         DISC_PROVIDER.getPoissonDiscs(levelContext, chunkPos).forEach(disc ->
                 generateTrees(levelContext, biomeDatabase, disc, context.origin())
@@ -83,9 +83,7 @@ public class DynamicTreeFeature extends Feature<NoneFeatureConfiguration> {
 
     //We must access the uncached noise, since accessing getBiome or getNoiseBiome calls chunks, which can hang.
     protected static Holder<Biome> getNoiseBiome(LevelContext levelContext, BlockPos pos) {
-        if (DTConfigs.SERVER.sampleNoiseBiome.get())
-            return levelContext.accessor().getUncachedNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
-        return levelContext.accessor().getBiome(pos);
+        return levelContext.level().getUncachedNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
     }
 
     public static boolean validTreePos(LevelSimulatedReader pLevel, BlockPos pPos) {
@@ -122,7 +120,7 @@ public class DynamicTreeFeature extends Feature<NoneFeatureConfiguration> {
                 if (species.isAcceptableSoilForWorldgen(levelContext.accessor(), groundPos, dirtState)) {
                     if (getChanceSelector(biomeEntry).getChance(RANDOM, species, circle.radius) == BiomePropertySelectors.Chance.OK) {
                         Holder<Biome> biome = getNoiseBiome(levelContext, groundPos);
-                        if (!species.generate(new DynamicTreeGenerationContext(levelContext, species, originPos, groundPos.mutable(), biome, CoordUtils.getRandom2DDir(RANDOM), circle.radius, true))) {
+                        if (!species.generate(new DynamicTreeGenerationContext(levelContext, species, originPos, groundPos.mutable(), biome, CoordUtils.getRandomDir(RANDOM), circle.radius, true))) {
                             result = GeneratorResult.FAIL_GENERATION;
                         }
                     } else {

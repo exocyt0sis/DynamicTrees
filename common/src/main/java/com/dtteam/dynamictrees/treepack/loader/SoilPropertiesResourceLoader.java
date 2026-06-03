@@ -5,12 +5,12 @@ import com.dtteam.dynamictrees.block.soil.SoilHelper;
 import com.dtteam.dynamictrees.block.soil.SoilProperties;
 import com.dtteam.dynamictrees.block.soil.SpreadableSoilProperties;
 import com.dtteam.dynamictrees.deserialization.JsonHelper;
-import com.dtteam.dynamictrees.deserialization.deserializer.IdentifierDeserializer;
+import com.dtteam.dynamictrees.deserialization.deserializer.ResourceLocationDeserializer;
 import com.dtteam.dynamictrees.deserialization.result.JsonResult;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import org.apache.logging.log4j.LogManager;
@@ -30,29 +30,28 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
     @Override
     public void registerAppliers() {
         this.loadAppliers
-                .register("substitute_soil", Identifier.class,
+                .register("substitute_soil", ResourceLocation.class,
                         (soilProperties, registryName) -> {
                             soilProperties.setGenerateBlock(false);
-                            registryName = IdentifierUtils.parseDTLocation(registryName);
+                            registryName = ResourceLocationUtils.parseDTLocation(registryName);
                             SoilProperties.REGISTRY.runOnNextLock(SoilProperties.REGISTRY.generateIfValidRunnable(registryName,
                                     soilProperties::setSubstitute, setSubstituteWarn(soilProperties, registryName)));
-                        })
-                .register("foliage_tint_layer_count", Integer.class, SoilProperties::setFoliageTintLayerCount);
+                        });
 
         // Primitive soil is needed before gathering data.
         this.gatherDataAppliers
                 .register("primitive_soil", Block.class, SoilProperties::setPrimitiveSoilBlock)
                 .register("only_if_loaded", String.class, SoilProperties::setOnlyIfLoaded)
                 .registerArrayApplier("only_if_loaded",String.class,SoilProperties::setOnlyIfLoaded)
-                .registerMapApplier("model_overrides", Identifier.class, SoilProperties::setModelOverrides)
-                .registerMapApplier("texture_overrides", Identifier.class, SoilProperties::setTextureOverrides);
+                .registerMapApplier("model_overrides", ResourceLocation.class, SoilProperties::setModelOverrides)
+                .registerMapApplier("texture_overrides", ResourceLocation.class, SoilProperties::setTextureOverrides);
 
         this.setupAppliers
                 .register("primitive_soil", Block.class, SoilProperties::setPrimitiveSoilBlock);
 
-//        this.reloadAppliers
-//                .register("foliage_tint_index", Integer.class, SoilProperties::setFoliageTintIndex)
-//                .register("roots_tint_index", Integer.class, SoilProperties::setRootsTintIndex);
+        this.reloadAppliers
+                .register("foliage_tint_index", Integer.class, SoilProperties::setFoliageTintIndex)
+                .register("roots_tint_index", Integer.class, SoilProperties::setRootsTintIndex);
         this.registerSpreadableAppliers();
 
         this.commonAppliers
@@ -61,7 +60,7 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
         super.registerAppliers();
     }
 
-    private static Runnable setSubstituteWarn(final SoilProperties soilProperties, final Identifier registryName) {
+    private static Runnable setSubstituteWarn(final SoilProperties soilProperties, final ResourceLocation registryName) {
         return () -> LOGGER.warn("Could not set soil substitute for \"{}\" as soil with name \"{}\" was not found.", soilProperties, registryName);
     }
 
@@ -93,7 +92,7 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
     private void readCustomBlockRegistryName(SoilProperties soilProperties, JsonObject json) {
         JsonResult.forInput(json)
                 .mapIfContains("block_registry_name", JsonElement.class, input ->
-                        IdentifierDeserializer.create(soilProperties.getRegistryName().getNamespace())
+                        ResourceLocationDeserializer.create(soilProperties.getRegistryName().getNamespace())
                                 .deserialize(input).orElseThrow(), soilProperties.getBlockRegistryName()
                 ).ifSuccessOrElse(
                         soilProperties::setBlockRegistryName,

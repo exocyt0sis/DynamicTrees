@@ -5,7 +5,7 @@ import com.dtteam.dynamictrees.api.season.SeasonGrowthCalculator;
 import com.dtteam.dynamictrees.api.season.SeasonManager;
 import com.dtteam.dynamictrees.api.season.SeasonProvider;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -21,7 +21,7 @@ public class NormalSeasonManager implements SeasonManager {
 
 	public static final Supplier<SeasonManager> NULL = NormalSeasonManager::new;
 
-    private final Map<Identifier, SeasonContext> seasonContextMap = new HashMap<>();
+    private final Map<ResourceLocation, SeasonContext> seasonContextMap = new HashMap<>();
     private Function<Level, Tuple<SeasonProvider, SeasonGrowthCalculator>> seasonMapper = w -> new Tuple<>(new NullSeasonProvider(), new NullSeasonGrowthCalculator());
 
     public NormalSeasonManager() {
@@ -36,7 +36,7 @@ public class NormalSeasonManager implements SeasonManager {
     }
 
     private SeasonContext getContext(Level level) {
-        return seasonContextMap.computeIfAbsent(level.dimension().identifier(), d -> {
+        return seasonContextMap.computeIfAbsent(level.dimension().location(), d -> {
             Tuple<SeasonProvider, SeasonGrowthCalculator> tuple = createProvider(level);
             return new SeasonContext(tuple.getA(), tuple.getB());
         });

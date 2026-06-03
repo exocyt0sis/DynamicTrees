@@ -4,61 +4,52 @@ import com.dtteam.dynamictrees.DynamicTrees;
 import com.dtteam.dynamictrees.api.network.BranchDestructionData;
 import com.dtteam.dynamictrees.api.voxmap.BlockPosBounds;
 import com.dtteam.dynamictrees.block.branch.TrunkShellBlock;
-import com.dtteam.dynamictrees.config.DTConfigs;
-import com.dtteam.dynamictrees.data.components.VoxelDataComponent;
+import com.dtteam.dynamictrees.block.soil.SoilBlock;
 import com.dtteam.dynamictrees.entity.animation.AnimationHandler;
 import com.dtteam.dynamictrees.entity.animation.AnimationHandlers;
 import com.dtteam.dynamictrees.entity.animation.DataAnimationHandler;
-import com.dtteam.dynamictrees.model.entity.FallingTreeEntityModelTrackerCache;
-import com.dtteam.dynamictrees.model.entity.ModelTracker;
-import com.dtteam.dynamictrees.platform.Services;
+import com.dtteam.dynamictrees.config.DTConfigs;
+import com.dtteam.dynamictrees.model.FallingTreeEntityModelTrackerCache;
+import com.dtteam.dynamictrees.model.ModelTracker;
+import com.dtteam.dynamictrees.platform.*;
 import com.dtteam.dynamictrees.registry.DTRegistries;
+import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.species.Species;
-import com.dtteam.dynamictrees.utility.CoordUtils;
+import com.dtteam.dynamictrees.utility.CoordUtils.Surround;
 import com.google.common.collect.Iterables;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.gamerules.GameRules;
-import net.minecraft.world.level.redstone.Orientation;
-import net.minecraft.world.level.storage.ValueInput;
-import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.apache.logging.log4j.LogManager;
-import oshi.util.tuples.Pair;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author ferreusveritas
  */
 public class FallingTreeEntity extends Entity implements ModelTracker {
 
-    public enum DestroyType {
-        VOID,
-        HARVEST,
-        EXPLODE,
-        FIRE,
-        ROOT
-    }
-
-    public static final EntityDataAccessor<VoxelDataComponent> voxelDataParameter = SynchedEntityData.defineId(FallingTreeEntity.class, DTRegistries.VOXEL_DATA_ENTITY_SERIALIZER.get());
+    public static final EntityDataAccessor<CompoundTag> voxelDataParameter = SynchedEntityData.defineId(FallingTreeEntity.class, EntityDataSerializers.COMPOUND_TAG);
 
     //Not needed in client
     protected List<ItemStack> payload = new ArrayList<>(0);
@@ -77,6 +68,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     public DestroyType destroyType = DestroyType.HARVEST;
     public boolean onFire = false;
     protected AABB cullingBB;
+    protected Species species;
 
     public static AnimationHandler AnimHandlerFall = AnimationHandlers.falloverAnimationHandler;
     public static AnimationHandler AnimHandlerDrop = AnimationHandlers.defaultAnimationHandler;
@@ -87,14 +79,16 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     public AnimationHandler currentAnimationHandler = AnimationHandlers.voidAnimationHandler;
     public DataAnimationHandler dataAnimationHandler = null;
 
+    public enum DestroyType {
+        VOID,
+        HARVEST,
+        EXPLODE,
+        FIRE,
+        ROOT
+    }
 
     public FallingTreeEntity(EntityType<? extends FallingTreeEntity> type, Level level) {
         super(type, level);
-    }
-
-    @Override
-    public boolean hurtServer(ServerLevel serverLevel, DamageSource damageSource, float v) {
-        return false;
     }
 
     public boolean isClientBuilt() {
@@ -103,14 +97,17 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
 
     /**
      * This is only run by the server to set up the object data
+     *
+     * @param destroyData
+     * @param payload
      */
-    public void setData(BranchDestructionData destroyData, List<ItemStack> payload, DestroyType destroyType) {
+    public FallingTreeEntity setData(BranchDestructionData destroyData, List<ItemStack> payload, DestroyType destroyType) {
         this.destroyData = destroyData;
         if (destroyData.getNumBranches() == 0) { //If the entity contains no branches there's no reason to create it at all
             DynamicTrees.LOG.error("Warning: Tried to create a EntityFallingTree with no branch blocks. This shouldn't be possible.");
-            //new Exception().printStackTrace();
-            this.remove(RemovalReason.DISCARDED);
-            return;
+            new Exception().printStackTrace();
+            kill();
+            return this;
         }
         BlockPos basePos = destroyData.basePos;
         this.payload = payload;
@@ -120,6 +117,8 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
         //these variables are used for the falling tree sound
         this.volume = destroyData.woodVolume.getVolume();
         this.hasLeaves = destroyData.getNumLeaves() > 0;
+
+        this.species = destroyData.species;
 
         this.setPosRaw(basePos.getX() + 0.5, basePos.getY(), basePos.getZ() + 0.5);
 
@@ -145,40 +144,55 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
 
         setVoxelData(buildVoxelData(destroyData));
 
+        return this;
     }
 
-    public VoxelDataComponent buildVoxelData(BranchDestructionData destroyData) {
-        return new VoxelDataComponent(destroyData, geomCenter, massCenter, destroyType, onFire, volume, hasLeaves);
+    public CompoundTag buildVoxelData(BranchDestructionData destroyData) {
+        CompoundTag tag = destroyData.writeToNBT(new CompoundTag());
+
+        tag.putDouble("geomx", geomCenter.x);
+        tag.putDouble("geomy", geomCenter.y);
+        tag.putDouble("geomz", geomCenter.z);
+        tag.putDouble("massx", massCenter.x);
+        tag.putDouble("massy", massCenter.y);
+        tag.putDouble("massz", massCenter.z);
+        tag.putInt("destroytype", destroyType.ordinal());
+        tag.putBoolean("onfire", onFire);
+        tag.putFloat("volume", volume);
+        tag.putBoolean("hasleaves", hasLeaves);
+        tag.putString("species", species.getRegistryName().toString());
+
+        return tag;
     }
 
-    public void setupFromComponent(VoxelDataComponent voxelData) {
-        destroyData = voxelData.destroyData();
+    public void setupFromNBT(CompoundTag tag) {
+        destroyData = new BranchDestructionData(tag);
         if (destroyData.getNumBranches() == 0) {
-            remove(RemovalReason.DISCARDED);
+            kill();
         }
-        destroyType = voxelData.destroyType();
-        geomCenter = voxelData.geomCenter();
-        massCenter = voxelData.massCenter();
+        destroyType = DestroyType.values()[tag.getInt("destroytype")];
+        geomCenter = new Vec3(tag.getDouble("geomx"), tag.getDouble("geomy"), tag.getDouble("geomz"));
+        massCenter = new Vec3(tag.getDouble("massx"), tag.getDouble("massy"), tag.getDouble("massz"));
 
         this.setBoundingBox(this.buildAABBFromDestroyData(this.destroyData).move(this.getX(), this.getY(), this.getZ()));
         this.cullingBB = this.cullingNormalBB.move(this.getX(), this.getY(), this.getZ());
 
-        volume = voxelData.volume();
-        hasLeaves = voxelData.hasLeaves();
+        volume = tag.getFloat("volume");
+        hasLeaves = tag.getBoolean("hasleaves");
+        species = Species.REGISTRY.get(tag.getString("species"));
 
-        onFire = voxelData.onFire();
+        onFire = tag.getBoolean("onfire");
     }
 
     public void buildClient() {
 
-        VoxelDataComponent tag = getVoxelData();
+        CompoundTag tag = getVoxelData();
 
-        if (tag != null && tag.destroyData() != null) {
-            setupFromComponent(tag);
+        if (tag.contains("species")) {
+            setupFromNBT(tag);
             clientBuilt = true;
         } else {
-            //System.out.println("Error: No species tag has been set");
-            LogManager.getLogger().error("Error: Could not setup client for Falling Tree Entity {}",this.uuid);
+            System.out.println("Error: No species tag has been set");
         }
 
         BlockPosBounds renderBounds = new BlockPosBounds(destroyData.cutPos);
@@ -193,7 +207,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
         for (int i = 0; i < destroyData.getNumBranches(); i++) {
             if (destroyData.getBranchRadius(i) > 8) {
                 BlockPos pos = destroyData.getBranchRelPos(i).offset(cutPos);
-                for (CoordUtils.Surround dir : CoordUtils.Surround.values()) {
+                for (Surround dir : Surround.values()) {
                     BlockPos dPos = pos.offset(dir.getOffset());
                     if (level().getBlockState(dPos).getBlock() instanceof TrunkShellBlock) {
                         level().removeBlock(dPos, false);
@@ -226,7 +240,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     }
 
     @Override
-    protected AABB makeBoundingBox(Vec3 position) {
+    public AABB getBoundingBoxForCulling() {
         return this.cullingBB;
     }
 
@@ -255,7 +269,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     }
 
     public Species getSpecies() {
-        return destroyData.species;
+        return species;
     }
 
     @Override
@@ -271,14 +285,14 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     public void tick() {
         super.tick();
 
-        if (this.level().isClientSide() && !this.clientBuilt) {
+        if (this.level().isClientSide && !this.clientBuilt) {
             this.buildClient();
             if (!isAlive()) {
                 return;
             }
         }
 
-        if (!this.level().isClientSide() && this.firstUpdate) {
+        if (!this.level().isClientSide && this.firstUpdate) {
             this.updateNeighbors();
         }
 
@@ -289,7 +303,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
 
         if (this.shouldDie()) {
             this.dropPayLoad();
-            this.remove(RemovalReason.KILLED);
+            this.kill();
             this.modelCleanup();
         }
 
@@ -301,23 +315,23 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
      */
     protected void updateNeighbors() {
         HashSet<BlockPos> destroyed = new HashSet<>();
-        HashSet<Pair<BlockPos, Direction>> toUpdate = new HashSet<>();
+        HashSet<BlockPos> toUpdate = new HashSet<>();
 
-        //Gather a set of all the block positions that were recently destroyed
+        //Gather a set of all of the block positions that were recently destroyed
         Iterables.concat(destroyData.getPositions(BranchDestructionData.PosType.BRANCHES), destroyData.getPositions(BranchDestructionData.PosType.LEAVES)).forEach(destroyed::add);
 
-        //Gather a list of all the non-destroyed blocks surrounding each destroyed block
+        //Gather a list of all of the non-destroyed blocks surrounding each destroyed block
         for (BlockPos d : destroyed) {
             for (Direction dir : Direction.values()) {
                 BlockPos dPos = d.relative(dir);
                 if (!destroyed.contains(dPos)) {
-                    toUpdate.add(new Pair<>(dPos, dir));
+                    toUpdate.add(dPos);
                 }
             }
         }
 
         //Update each of the blocks that need to be updated
-        toUpdate.forEach(pos -> level().neighborChanged(pos.getA(), Blocks.AIR, Orientation.fromIndex(pos.getB().ordinal())));
+        toUpdate.forEach(pos -> level().neighborChanged(pos, Blocks.AIR, pos));
     }
 
     protected AnimationHandler selectAnimationHandler() {
@@ -365,7 +379,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
     }
 
     public void dropPayLoad() {
-        if (!level().isClientSide()) {
+        if (!level().isClientSide) {
             currentAnimationHandler.dropPayload(this);
         }
     }
@@ -388,7 +402,7 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
      */
     public static void standardDropLogsPayload(FallingTreeEntity entity) {
         Level level = entity.level();
-        if (!level.isClientSide()) {
+        if (!level.isClientSide) {
             BlockPos cutPos = entity.getDestroyData().cutPos;
             entity.getPayload().forEach(i -> spawnItemAsEntity(level, cutPos, i));
         }
@@ -396,9 +410,9 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
 
     public static void standardDropLeavesPayLoad(FallingTreeEntity entity) {
         Level level = entity.level();
-        if (!level.isClientSide()) {
+        if (!level.isClientSide) {
             BlockPos cutPos = entity.getDestroyData().cutPos;
-            entity.getDestroyData().leavesDrops.forEach(bis -> Block.popResource(level, cutPos.offset(bis.pos()), bis.stack()));
+            entity.getDestroyData().leavesDrops.forEach(bis -> Block.popResource(level, cutPos.offset(bis.pos), bis.stack));
         }
     }
 
@@ -407,71 +421,67 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
      * the loot.
      */
     public static void spawnItemAsEntity(Level level, BlockPos pos, ItemStack stack) {
-        if (level.isClientSide() || level.getServer() == null
-                || !level.getServer().getGameRules().get(GameRules.BLOCK_DROPS)
-                || Services.MISC.isLevelRestoringBlockSnapshots(level)) // do not drop items while restoring block states, prevents item dupes
-            return;
-
-        ItemEntity itemEntity = new ItemEntity(level, (double) pos.getX() + 0.5F, (double) pos.getY() + 0.5F, (double) pos.getZ() + 0.5F, stack);
-        itemEntity.setDeltaMovement(0, 0, 0);
-        itemEntity.setDefaultPickUpDelay();
-        level.addFreshEntity(itemEntity);
+        if (!level.isClientSide && !stack.isEmpty() && level.getGameRules().getBoolean(GameRules.RULE_DOBLOCKDROPS) && !Services.MISC.isLevelRestoringBlockSnapshots(level)) { // do not drop items while restoring blockstates, prevents item dupe
+            ItemEntity entityitem = new ItemEntity(level, (double) pos.getX() + 0.5F, (double) pos.getY() + 0.5F, (double) pos.getZ() + 0.5F, stack);
+            entityitem.setDeltaMovement(0, 0, 0);
+            entityitem.setDefaultPickUpDelay();
+            level.addFreshEntity(entityitem);
+        }
     }
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
-        builder.define(voxelDataParameter, new VoxelDataComponent());
+        builder.define(voxelDataParameter, new CompoundTag());
     }
+
 
     //This is shipped off to the clients
-    public void setVoxelData(VoxelDataComponent voxelData) {
+    public void setVoxelData(CompoundTag tag) {
         this.setBoundingBox(this.buildAABBFromDestroyData(this.destroyData).move(this.getX(), this.getY(), this.getZ()));
         this.cullingBB = this.cullingNormalBB.move(this.getX(), this.getY(), this.getZ());
-
-        getEntityData().set(voxelDataParameter, voxelData);
+        getEntityData().set(voxelDataParameter, tag);
     }
 
-    public VoxelDataComponent getVoxelData() {
+    public CompoundTag getVoxelData() {
         return getEntityData().get(voxelDataParameter);
     }
 
     @Override
-    protected void readAdditionalSaveData(ValueInput valueInput) {
-//        CompoundTag vox = (CompoundTag) compound.get("vox");
-//        setupFromNBT(vox);
-//        setVoxelData(vox);
-//
-//        if (compound.contains("payload")) {
-//            final ListTag nbtList = (ListTag) compound.get("payload");
-//
-//            for (Tag tag : Objects.requireNonNull(nbtList)) {
-//                if (tag instanceof CompoundTag compTag) {
-//                    ItemStack.parse(level().registryAccess(),compTag).ifPresent(t->this.payload.add(t)); ;
-//                }
-//            }
-//        }
+    protected void readAdditionalSaveData(CompoundTag compound) {
+        CompoundTag vox = (CompoundTag) compound.get("vox");
+        setupFromNBT(vox);
+        setVoxelData(vox);
+
+        if (compound.contains("payload")) {
+            final ListTag nbtList = (ListTag) compound.get("payload");
+
+            for (Tag tag : Objects.requireNonNull(nbtList)) {
+                if (tag instanceof CompoundTag compTag) {
+                    ItemStack.parse(level().registryAccess(),compTag).ifPresent(t->this.payload.add(t)); ;
+                }
+            }
+        }
     }
 
     @Override
-    protected void addAdditionalSaveData(ValueOutput valueOutput) {
-//        compound.put("vox", getVoxelData());
-//
-//        if (!payload.isEmpty()) {
-//            ListTag list = new ListTag();
-//
-//            for (ItemStack stack : payload) {
-//                list.add(stack.save(level().registryAccess(), compound));
-//            }
-//
-//            compound.put("payload", list);
-//        }
+    protected void addAdditionalSaveData(CompoundTag compound) {
+        compound.put("vox", getVoxelData());
+
+        if (!payload.isEmpty()) {
+            ListTag list = new ListTag();
+
+            for (ItemStack stack : payload) {
+                list.add(stack.save(level().registryAccess(), compound));
+            }
+
+            compound.put("payload", list);
+        }
     }
 
     public static FallingTreeEntity dropTree(Level level, BranchDestructionData destroyData, List<ItemStack> woodDropList, DestroyType destroyType) {
         //Spawn the appropriate item entities into the level
-        if (level instanceof ServerLevel serverLevel) {// Only spawn entities server side
-
-            FallingTreeEntity entity = DTRegistries.FALLING_TREE.get().create(serverLevel, EntitySpawnReason.NATURAL);
+        if (!level.isClientSide()) {// Only spawn entities server side
+            FallingTreeEntity entity = DTRegistries.FALLING_TREE.get().create(level);
             if (entity == null) return null;
             entity.setData(destroyData, woodDropList, destroyType);
             if (entity.isAlive()) {
@@ -481,19 +491,6 @@ public class FallingTreeEntity extends Entity implements ModelTracker {
         }
 
         return null;
-}
-
-
-    private float unboundXRot;
-
-    @Override
-    public void setXRot(float xRot) {
-        unboundXRot = xRot;
-        super.setXRot(xRot);
     }
 
-    @Override
-    public float getXRot() {
-        return unboundXRot;
-    }
 }

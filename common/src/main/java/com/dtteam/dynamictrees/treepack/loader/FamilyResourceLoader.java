@@ -7,14 +7,13 @@ import com.dtteam.dynamictrees.block.soil.SoilProperties;
 import com.dtteam.dynamictrees.deserialization.JsonHelper;
 import com.dtteam.dynamictrees.deserialization.applier.Applier;
 import com.dtteam.dynamictrees.deserialization.applier.PropertyApplierResult;
-import com.dtteam.dynamictrees.tree.family.AerialRootsFamily;
-import com.dtteam.dynamictrees.tree.family.CreakingHeartFamily;
 import com.dtteam.dynamictrees.tree.family.Family;
-import com.dtteam.dynamictrees.tree.family.MossyAerialRootsFamily;
+import com.dtteam.dynamictrees.tree.family.CreakingHeartFamily;
+import com.dtteam.dynamictrees.tree.family.UndergroundRootsFamily;
 import com.dtteam.dynamictrees.tree.species.Species;
-import com.dtteam.dynamictrees.utility.IdentifierUtils;
+import com.dtteam.dynamictrees.utility.ResourceLocationUtils;
 import com.google.gson.JsonObject;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import org.apache.logging.log4j.LogManager;
@@ -34,9 +33,9 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
     @Override
     public void registerAppliers() {
         this.commonAppliers
-                .register("common_species", Identifier.class,
+                .register("common_species", ResourceLocation.class,
                         (family, registryName) -> {
-                    registryName = IdentifierUtils.parseDTLocation(registryName);
+                    registryName = ResourceLocationUtils.parseDTLocation(registryName);
                     Species.REGISTRY.runOnNextLock(Species.REGISTRY.generateIfValidRunnable(registryName,
                             family::setCommonSpecies, setCommonWarn(family, registryName)));
                 })
@@ -49,8 +48,8 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
                 .register("primitive_stripped_log", Block.class, Family::setPrimitiveStrippedLog)
                 .register("only_if_loaded", String.class, Family::setOnlyIfLoaded)
                 .registerArrayApplier("only_if_loaded", String.class, Family::setOnlyIfLoaded)
-                .registerMapApplier("texture_overrides", Identifier.class, Family::setTextureOverrides)
-                .registerMapApplier("model_overrides", Identifier.class, Family::setModelOverrides)
+                .registerMapApplier("texture_overrides", ResourceLocation.class, Family::setTextureOverrides)
+                .registerMapApplier("model_overrides", ResourceLocation.class, Family::setModelOverrides)
                 .registerMapApplier("lang_overrides", String.class, Family::setLangOverrides)
                 .register("stick", Item.class, Family::setStick);
 
@@ -74,42 +73,54 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
                 .register("reduce_radius_when_stripping", Boolean.class, Family::setReduceRadiusWhenStripping);
 
         registerMangroveAppliers();
-        registerPaleOakAppliers();
+                registerPaleOakAppliers();
 
         super.registerAppliers();
     }
 
     private void registerMangroveAppliers(){
         this.gatherDataAppliers
-                .register("primitive_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRoots)
-                .register("primitive_filled_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRootsFilled)
-                .register("primitive_covered_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRootsCovered)
-                .register("default_soil", AerialRootsFamily.class, SoilProperties.class, AerialRootsFamily::setDefaultSoil)
-                .register("moss_carpet", MossyAerialRootsFamily.class, Item.class, MossyAerialRootsFamily::setMossCarpet);
+                .register("primitive_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRoots)
+                .register("primitive_filled_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRootsFilled)
+                .register("primitive_covered_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRootsCovered)
+                //to-do: put in soil properties instead
+                .register("default_soil", UndergroundRootsFamily.class, SoilProperties.class, UndergroundRootsFamily::setDefaultSoil);
         this.setupAppliers
-                .register("primitive_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRoots)
-                .register("primitive_filled_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRootsFilled)
-                .register("primitive_covered_root", AerialRootsFamily.class, Block.class, AerialRootsFamily::setPrimitiveRootsCovered)
-                .register("moss_carpet", MossyAerialRootsFamily.class, Item.class, MossyAerialRootsFamily::setMossCarpet);
+                .register("primitive_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRoots)
+                .register("primitive_filled_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRootsFilled)
+                .register("primitive_covered_root", UndergroundRootsFamily.class, Block.class, UndergroundRootsFamily::setPrimitiveRootsCovered)
+                //.register("replaceable_by_roots", MangroveFamily.class , ,)
+        ;
         this.reloadAppliers
-                .register("default_soil", AerialRootsFamily.class, SoilProperties.class, AerialRootsFamily::setDefaultSoil)
-                .registerArrayApplier("root_system_acceptable_soils", AerialRootsFamily.class, String.class, (Applier<AerialRootsFamily, String>) this::addAcceptableSoilForRootSystem)
-                .register("primary_root_thickness", AerialRootsFamily.class, Integer.class, AerialRootsFamily::setPrimaryRootThickness)
-                .register("secondary_root_thickness", AerialRootsFamily.class, Integer.class, AerialRootsFamily::setSecondaryRootThickness)
-                .register("mossy_roots_chance", MossyAerialRootsFamily.class, Float.class, MossyAerialRootsFamily::setMossyRootsChance);
+                .register("default_soil", UndergroundRootsFamily.class, SoilProperties.class, UndergroundRootsFamily::setDefaultSoil)
+                .registerArrayApplier("root_system_acceptable_soils", UndergroundRootsFamily.class, String.class, (Applier<UndergroundRootsFamily, String>) this::addAcceptableSoilForRootSystem);
+        ;
+
     }
 
-    private void registerPaleOakAppliers(){
+    private void registerPaleOakAppliers() {
         this.gatherDataAppliers
                 .register("primitive_heart", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setPrimitiveHeartLog)
                 .register("resin_item", CreakingHeartFamily.class, Item.class, CreakingHeartFamily::setResinItem)
-                .register("resin_block", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setResinBlock);
-        this.setupAppliers
-                .register("primitive_heart", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setPrimitiveHeartLog);
-        this.reloadAppliers
+                .register("resin_block", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setResinBlock)
+                .register("tree_base_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeBaseHardnessMultiplier)
                 .register("tree_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeHeartHardnessMultiplier)
                 .register("hidden_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setHiddenHeartHardnessMultiplier);
 
+        this.setupAppliers
+                .register("primitive_heart", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setPrimitiveHeartLog)
+                .register("resin_item", CreakingHeartFamily.class, Item.class, CreakingHeartFamily::setResinItem)
+                .register("resin_block", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setResinBlock)
+                .register("tree_base_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeBaseHardnessMultiplier)
+                .register("tree_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeHeartHardnessMultiplier)
+                .register("hidden_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setHiddenHeartHardnessMultiplier);
+
+        this.reloadAppliers
+                .register("resin_item", CreakingHeartFamily.class, Item.class, CreakingHeartFamily::setResinItem)
+                .register("resin_block", CreakingHeartFamily.class, Block.class, CreakingHeartFamily::setResinBlock)
+                .register("tree_base_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeBaseHardnessMultiplier)
+                .register("tree_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setTreeHeartHardnessMultiplier)
+                .register("hidden_heart_hardness_multiplier", CreakingHeartFamily.class, Float.class, CreakingHeartFamily::setHiddenHeartHardnessMultiplier);
     }
 
     /**
@@ -120,7 +131,7 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
      * @param registryName the registry name of the requested family
      * @return a {@link Runnable} that logs the warning
      */
-    private static Runnable setCommonWarn(final Family family, final Identifier registryName) {
+    private static Runnable setCommonWarn(final Family family, final ResourceLocation registryName) {
         return () -> LOGGER.warn("Could not set common species for \"{}\" as species with name  \"{}\" was not found.", family, registryName);
     }
 
@@ -131,9 +142,9 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
     }
 
     private void setBranchProperties(Family family, JsonObject json) {
-        family.setBranchBlockProperties(JsonHelper.getBlockProperties(
+        family.setProperties(JsonHelper.getBlockProperties(
                 JsonHelper.getOrDefault(json, "branch_properties", JsonObject.class, new JsonObject()),
-                family::defaultBranchProperties,
+                family::getDefaultBranchProperties,
                 error -> this.logError(family.getRegistryName(), error),
                 warning -> this.logWarning(family.getRegistryName(), warning)
         ));
@@ -145,8 +156,8 @@ public final class FamilyResourceLoader extends JsonRegistryResourceLoader<Famil
         loadData.getResource().setupBlocks();
     }
 
-    private PropertyApplierResult addAcceptableSoilForRootSystem(AerialRootsFamily family, String acceptableSoil) {
-        return SoilHelper.applyIfSoilIsAcceptable(family, acceptableSoil, AerialRootsFamily::addAcceptableSoilsForRootSystem);
+    private PropertyApplierResult addAcceptableSoilForRootSystem(UndergroundRootsFamily family, String acceptableSoil) {
+        return SoilHelper.applyIfSoilIsAcceptable(family, acceptableSoil, UndergroundRootsFamily::addAcceptableSoilsForRootSystem);
     }
 
 }

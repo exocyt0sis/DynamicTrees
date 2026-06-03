@@ -125,11 +125,11 @@ public class ChunkTreeHelper {
     }
 
     public static BlockPosBounds getEffectiveBlockBounds(Level level, ChunkPos chunkPos, int radius) {
-        LevelChunk chunk = level.getChunk(chunkPos.x(), chunkPos.z());
+        LevelChunk chunk = level.getChunk(chunkPos.x, chunkPos.z);
         BlockPosBounds bounds = new BlockPosBounds(level, chunkPos);
 
         bounds.shrink(Direction.UP, (level.getHeight() - 1) - (getTopFilledSegment(chunk) + 16));
-        for (Direction dir : CoordUtils.HORIZONTALS) {
+        for (Direction dir : Direction.Plane.HORIZONTAL.stream().toList()) {
             bounds.expand(dir, radius * CHUNK_WIDTH);
         }
 
@@ -156,7 +156,7 @@ public class ChunkTreeHelper {
     public static void cleanupNeighbors(Level level, BranchDestructionData destroyData) {
 
         // Only run on the server since the block updates will come from the server anyway
-        if (level.isClientSide()) {
+        if (level.isClientSide) {
             return;
         }
 
@@ -177,7 +177,7 @@ public class ChunkTreeHelper {
         SimpleVoxmap outlineVoxmap = new SimpleVoxmap(treeVoxmap);
         treeVoxmap.getAllNonZero(TREE).forEach(pos -> {
             for (Direction dir : Direction.values()) {
-                outlineVoxmap.setVoxel(pos.move(dir.getUnitVec3i()), SURR);
+                outlineVoxmap.setVoxel(pos.move(dir.getNormal()), SURR);
             }
         });
 
