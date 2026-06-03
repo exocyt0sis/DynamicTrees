@@ -5,7 +5,7 @@
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 [![Release](https://img.shields.io/badge/status-release_1.8.0-brightgreen.svg)](https://github.com/exocyt0sis/DynamicTrees/releases/tag/1.8.0-BETA02-backport-1.21.1)
 
-Minecraft NeoForge mod providing dynamic trees that progressively grow from seed to maturity, with Pale Garden and creaking-heart compatibility backported for 1.21.1.
+Like the name suggests, Dynamic Trees 1.21.1 Backport is a backport that brings the Dynamic Trees modification created for Minecraft 26.1.2 to version 1.21.1. Note that this is an *unofficial* fork - all credits go to Max Hyper and the rest of the outstanding Dynamic Trees modification. Please consider supporting Dynamic Trees by [sponsoring](https://github.com/sponsors/supermassimo) the project - Minecraft wouldn't be the same without it.
 
 ![Logo](./header.png)
 
