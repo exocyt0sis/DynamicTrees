@@ -267,11 +267,7 @@ public final class CreakingCompatSpawner {
         if (creaking.distanceToSqr(heartPos.getX() + 0.5, heartPos.getY() + 0.5, heartPos.getZ() + 0.5) > (34.0 * 34.0)) {
             return true;
         }
-        try {
-            return (boolean) vbPlayerStuck.invoke(creaking);
-        } catch (ReflectiveOperationException ignored) {
-            return false;
-        }
+        return false;
     }
 
     private static void bindCreaking(BlockEntity proxyHeart, Entity creaking, BlockPos heartPos) {
@@ -667,17 +663,13 @@ public final class CreakingCompatSpawner {
     }
 
     private static void cleanupOrphanedCreakings(ServerLevel level) {
-        final EntityType<?> creakingType = resolveCreakingType();
-        if (creakingType == null) {
-            return;
-        }
-
-        final List<Entity> entities = level.getEntities((Entity) null,
-            new AABB(-30_000_000, level.getMinBuildHeight(), -30_000_000,
-                30_000_000, level.getMaxBuildHeight(), 30_000_000),
-                entity -> entity.getType() == creakingType && vbCreakingClass.isInstance(entity));
-
-        for (Entity entity : entities) {
+        // Avoid AABB-based level.getEntities() queries: performance mods such as Sable abort and
+        // spam the log when the bounding box covers the entire world border.  Instead, iterate over
+        // the flat list of all currently-loaded entities so no spatial query is needed at all.
+        for (Entity entity : level.getEntities().getAll()) {
+            if (!vbCreakingClass.isInstance(entity)) {
+                continue;
+            }
             try {
                 final Object home = vbGetHomePos.invoke(entity);
                 if (!(home instanceof BlockPos homePos)) {
@@ -685,7 +677,7 @@ public final class CreakingCompatSpawner {
                 }
 
                 final BlockState stateAtHome = level.getBlockState(homePos);
-                if (stateAtHome.getBlock() instanceof CreakingHeartBranchBlock) {
+                if (isValidHeartHomeBlock(stateAtHome)) {
                     continue;
                 }
 
@@ -702,6 +694,23 @@ public final class CreakingCompatSpawner {
             } catch (ReflectiveOperationException ignored) {
             }
         }
+    }
+
+    private static boolean isValidHeartHomeBlock(BlockState stateAtHome) {
+        if (stateAtHome.getBlock() instanceof CreakingHeartBranchBlock) {
+            return true;
+        }
+
+        // Backport compatibility: linked creakings can legitimately use either the
+        // Dynamic Trees heart branch or vanilla/backport creaking heart block IDs.
+        final ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(stateAtHome.getBlock());
+        for (ResourceLocation heartId : CREAKING_HEART_BLOCK_IDS) {
+            if (heartId.equals(blockId)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void pruneResinCooldowns(ServerLevel level) {

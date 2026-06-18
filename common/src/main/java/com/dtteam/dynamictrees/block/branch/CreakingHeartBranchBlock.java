@@ -6,14 +6,23 @@ import com.dtteam.dynamictrees.data.DTLootTableBuilder;
 import com.dtteam.dynamictrees.platform.Services;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.family.CreakingHeartFamily;
+import net.minecraft.advancements.critereon.EnchantmentPredicate;
+import net.minecraft.advancements.critereon.ItemEnchantmentsPredicate;
+import net.minecraft.advancements.critereon.ItemPredicate;
+import net.minecraft.advancements.critereon.ItemSubPredicates;
+import net.minecraft.advancements.critereon.MinMaxBounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -27,9 +36,17 @@ import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.storage.loot.LootTable;
+import net.minecraft.world.level.storage.loot.LootPool;
+import net.minecraft.world.level.storage.loot.entries.LootItem;
+import net.minecraft.world.level.storage.loot.functions.ApplyExplosionDecay;
+import net.minecraft.world.level.storage.loot.functions.SetItemCountFunction;
+import net.minecraft.world.level.storage.loot.predicates.MatchTool;
+import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
+import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -113,8 +130,34 @@ public class CreakingHeartBranchBlock extends BasicBranchBlock {
 
     @Override
     public LootTable.Builder createBranchDrops(HolderLookup.Provider registries) {
-        return DTLootTableBuilder.createBranchDrops(getPrimitiveLog().orElse(net.minecraft.world.level.block.Blocks.OAK_LOG),
+        final HolderLookup.RegistryLookup<Enchantment> enchantments = registries.lookupOrThrow(Registries.ENCHANTMENT);
+        final net.minecraft.world.level.storage.loot.predicates.LootItemCondition.Builder hasSilkTouch = MatchTool.toolMatches(
+            ItemPredicate.Builder.item().withSubPredicate(
+                ItemSubPredicates.ENCHANTMENTS,
+                ItemEnchantmentsPredicate.enchantments(List.of(
+                    new EnchantmentPredicate(enchantments.getOrThrow(Enchantments.SILK_TOUCH), MinMaxBounds.Ints.atLeast(1))
+                ))
+            )
+        );
+
+        if (!(getFamily() instanceof CreakingHeartFamily heartFamily)) {
+            return DTLootTableBuilder.createBranchDrops(getPrimitiveLog().orElse(net.minecraft.world.level.block.Blocks.OAK_LOG),
                 getFamily().getStick(1).getItem(), registries);
+        }
+
+        // Creaking heart uses explicit Silk Touch dispatch: heart block with Silk Touch,
+        // otherwise resin clumps. This mirrors vanilla heart behavior.
+        return LootTable.lootTable().withPool(
+            LootPool.lootPool().setRolls(ConstantValue.exactly(1)).add(
+                LootItem.lootTableItem(heartFamily.getPrimitiveHeartLog().orElse(net.minecraft.world.level.block.Blocks.OAK_LOG))
+                    .when(hasSilkTouch)
+                    .otherwise(
+                        LootItem.lootTableItem(heartFamily.getResinItem())
+                            .apply(SetItemCountFunction.setCount(UniformGenerator.between(1.0F, 3.0F)))
+                            .apply(ApplyExplosionDecay.explosionDecay())
+                    )
+            )
+        ).setParamSet(com.dtteam.dynamictrees.loot.DTLootParameterSets.BRANCHES);
     }
 
     public void addResinToBranch(BlockState state, Level level, BlockPos pos) {
@@ -153,18 +196,40 @@ public class CreakingHeartBranchBlock extends BasicBranchBlock {
         if (state.getValue(HIDDEN)) {
             if (!level.isClientSide()) {
                 level.levelEvent(null, 2001, pos, getId(state));
-                if (!player.isCreative() && getFamily() instanceof CreakingHeartFamily heartFamily) {
-                    popResource(level, pos, heartFamily.createResinDrop(level.getRandom(), this.getRadius(state)));
-                }
             }
             level.setBlock(pos, state.setValue(HIDDEN, false), 3);
             return false;
         }
 
-        if (!level.isClientSide() && !player.isCreative() && getFamily() instanceof CreakingHeartFamily heartFamily) {
-            popResource(level, pos, heartFamily.createResinDrop(level.getRandom(), this.getRadius(state)));
+        if (!level.isClientSide()) {
+            level.levelEvent(null, 2001, pos, getId(state));
+
+            if (!player.isCreative() && getFamily() instanceof CreakingHeartFamily heartFamily) {
+                final ItemStack heldItem = player.getMainHandItem();
+                final boolean silkTouch = net.minecraft.world.item.enchantment.EnchantmentHelper.getItemEnchantmentLevel(level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.SILK_TOUCH), heldItem) > 0;
+
+                if (silkTouch) {
+                    popResource(level, pos, new ItemStack(heartFamily.getPrimitiveHeartLog().orElse(net.minecraft.world.level.block.Blocks.AIR)));
+                } else {
+                    final int resinCount = 1 + level.getRandom().nextInt(3);
+                    popResource(level, pos, new ItemStack(heartFamily.getResinItem(), resinCount));
+                }
+
+                if (level instanceof ServerLevel serverLevel) {
+                    popExperience(serverLevel, pos, 20 + level.getRandom().nextInt(5));
+                }
+            }
         }
-        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+
+        BlockState replacement = fluid.createLegacyBlock();
+        if (level.isClientSide()) {
+            level.setBlock(pos, replacement, 11);
+        } else {
+            // Use ignored set to avoid BranchBlock sloppy-break side effects that can
+            // emit unrelated branch drops (e.g. pale_oak_log) when removing the heart.
+            this.setBlockStateIgnored(level, pos, replacement, 3);
+        }
+        return false;
     }
 
     @Override

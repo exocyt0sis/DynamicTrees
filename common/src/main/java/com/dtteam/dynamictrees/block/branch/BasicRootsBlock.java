@@ -181,6 +181,8 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
         boolean setWaterlogged = replacingWater && !replacingGround;
         boolean isFullBlock = radius >= 8;
         Layer layer;
+        // Keep upstream layer behavior: roots are first covered when replacing soil,
+        // then only upgrade to filled for full-block roots.
         if (currentState.is(this)){
             layer = currentState.getValue(LAYER);
             if (layer == Layer.COVERED && isFullBlock){
@@ -409,8 +411,12 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
     public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
         if (isFullBlock(state)) return getFamily().getPrimitiveCoveredRoots().orElse(Blocks.AIR).defaultDestroyTime();
         final int radius = this.getRadius(level.getBlockState(pos));
-        final double hardness = this.getFamily().getPrimitiveLog().orElse(Blocks.AIR).defaultBlockState()
-                .getDestroySpeed(level, pos) * DTConfigs.SERVER.treeHardnessMultiplier.get() * (radius * radius) / 64.0f * 8.0f;
+        // Match roots hardness to the active root layer primitive (mangrove_roots vs muddy_mangrove_roots).
+        Layer layer = state.hasProperty(LAYER) ? state.getValue(LAYER) : Layer.EXPOSED;
+        Block baseBlock = layer.getPrimitive(getFamily())
+            .orElseGet(() -> getFamily().getPrimitiveLog().orElse(Blocks.AIR));
+        final double hardness = baseBlock.defaultBlockState()
+            .getDestroySpeed(level, pos) * DTConfigs.SERVER.treeHardnessMultiplier.get() * (radius * radius) / 64.0f * 8.0f;
         return (float) Math.min(hardness, DTConfigs.SERVER.maxTreeHardness.get());
     }
 
